@@ -1,0 +1,45 @@
+name: ticket-forge
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:?defina DATABASE_USER no .env}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?defina DATABASE_PASSWORD no .env}
+      POSTGRES_DB: ${DATABASE_NAME:?defina DATABASE_NAME no .env}
+    ports:
+      # Exposto só no loopback: o banco não fica acessível pela rede local.
+      - '127.0.0.1:${DATABASE_PORT:-5432}:5432'
+    volumes:
+      # A partir do PostgreSQL 18 o volume é montado no diretório pai de PGDATA.
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}
+    # noeviction é exigido pelo BullMQ: o Redis não pode descartar chaves de jobs.
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$${REDIS_PASSWORD}" --appendonly yes --maxmemory-policy noeviction
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
