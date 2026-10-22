@@ -77,16 +77,24 @@ Valores booleanos aceitam `true`/`false`, `1`/`0`, `yes`/`no` e `on`/`off`.
 | Variável | Obrigatória | Padrão | Regra |
 | --- | --- | --- | --- |
 | `JWT_ACCESS_SECRET` | Sim | | Mínimo de 32 caracteres |
-| `JWT_ACCESS_EXPIRES_IN` | Sim | | `<número><s\|m\|h\|d>`, ex.: `15m` |
+| `JWT_ACCESS_EXPIRES_IN` | Sim | | `<número><s\|m\|h\|d>`, ex.: `15m`; maior que zero |
 | `JWT_REFRESH_SECRET` | Sim | | Mínimo de 32 caracteres, diferente do access |
-| `JWT_REFRESH_EXPIRES_IN` | Sim | | `<número><s\|m\|h\|d>`, ex.: `7d` |
+| `JWT_REFRESH_EXPIRES_IN` | Sim | | `<número><s\|m\|h\|d>`, ex.: `7d`; maior que a do access |
 
-## Por que as variáveis de Redis e JWT já são obrigatórias
+As durações chegam ao código já convertidas para **segundos**
+(`env.get('JWT_ACCESS_EXPIRES_IN')` devolve `900` para `15m`). O mesmo número
+vira o `exp` do JWT e o TTL da sessão no Redis, então os dois nunca divergem. O
+uso de cada variável está em [Autenticação, sessão e RBAC](autenticacao.md).
 
-Redis e autenticação só ganham código nos próximos PRs, mas o contrato de
-configuração nasce completo. Assim um ambiente montado hoje não quebra quando
-esses módulos chegarem, e a falta de um segredo aparece no deploy, não na
-primeira requisição de login.
+## Grupos de variáveis
+
+O schema é dividido em grupos (`appEnvSchema`, `databaseEnvSchema`,
+`redisEnvSchema`, `jwtEnvSchema`). Quem precisa de um recorte usa
+`EnvService.pick(schema)` e recebe só aquele grupo, tipado:
+
+```ts
+const redis = env.pick(redisEnvSchema); // { REDIS_HOST, REDIS_PORT, ... }
+```
 
 ## Validação parcial na CLI de migrations
 

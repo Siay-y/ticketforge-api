@@ -1,6 +1,28 @@
 # Segurança
 
-O que a fundação já protege, como protege e o que fica para os próximos PRs.
+O que a API já protege, como protege e o que fica para os próximos PRs.
+
+## Autenticação e sessão
+
+Detalhes completos em [Autenticação, sessão e RBAC](autenticacao.md).
+
+- **Fail-closed.** O `JwtAuthGuard` é global: toda rota exige access token, e
+  abrir uma rota exige `@Public()` explícito. Esquecer o decorator protege, não expõe.
+- **Logout imediato.** O access token só vale enquanto a sessão existir no
+  Redis; o logout apaga a sessão e os dois tokens param de valer na hora.
+- **Rotação com detecção de reuso.** Cada refresh token é de uso único.
+  Reapresentar um token já trocado indica vazamento e encerra a sessão inteira.
+- **Troca atômica.** A rotação é um compare-and-swap em Lua no Redis: refresh
+  simultâneos com o mesmo token nunca geram duas sessões válidas.
+- **JWT endurecido.** Algoritmo fixo (HS256), audiência distinta por tipo de
+  token, emissor conferido e payload validado por schema. Sem `alg: none`, sem
+  troca de algoritmo, sem refresh token aceito como access token.
+- **Senhas com scrypt.** Perfil OWASP, salt por senha, comparação em tempo
+  constante e rehash automático quando os parâmetros sobem.
+- **Sem enumeração no login.** E-mail inexistente e senha errada recebem a mesma
+  resposta, em tempo equivalente.
+- **Sem escalada no cadastro.** O papel é sempre `customer`; enviar `role` no
+  corpo devolve `400`.
 
 ## Configuração
 
@@ -38,8 +60,9 @@ arquivos, sem script inline.
 
 - Somente as origens de `CORS_ORIGINS` recebem `Access-Control-Allow-Origin`.
   Curinga (`*`) é rejeitado na validação.
-- `credentials: true`, preparado para o refresh token em cookie `httpOnly`. Isso
-  só é seguro porque a lista de origens é explícita.
+- `credentials: true`, reservado para uma futura entrega do refresh token em
+  cookie `httpOnly` (hoje ele trafega no corpo). Isso só é seguro porque a lista
+  de origens é explícita.
 - Métodos e cabeçalhos aceitos são listados, e o preflight fica em cache por 10
   minutos.
 
@@ -82,10 +105,13 @@ implícita de tipos está desligada, então `"2"` não vira `2` sem um
 
 Itens planejados para os próximos PRs:
 
-- Autenticação JWT e guards de autorização por papel.
 - Rate limiting (`@nestjs/throttler` com storage em Redis), essencial na abertura
-  de vendas.
-- Filtro global de exceções com resposta padronizada e sem stack trace em produção.
+  de vendas e contra força bruta em `/auth/login` e enumeração em `/auth/register`.
+- Bloqueio temporário de conta após tentativas de login seguidas.
+- Endpoint de gestão de papéis e revogação de todas as sessões de um usuário.
+- Confirmação de e-mail e recuperação de senha.
+- Resposta `503` (em vez de `500`) quando o Redis estiver indisponível.
+- Filtro para erros não mapeados, com resposta padronizada e sem stack trace.
 - Limite explícito de tamanho do corpo por rota.
 - `trust proxy` configurado para o IP real do cliente atrás de load balancer.
 - Logs estruturados com correlação de requisição.

@@ -10,9 +10,17 @@ const requiredString = z.string().trim().min(1);
 
 const secret = z.string().min(32, 'Use no mínimo 32 caracteres');
 
-const duration = z
+const SECONDS_PER_UNIT = { s: 1, m: 60, h: 3_600, d: 86_400 } as const;
+
+// Convertida para segundos: o mesmo número vira o `exp` do JWT e o TTL no Redis.
+const durationInSeconds = z
   .string()
-  .regex(/^\d+[smhd]$/, 'Use o formato <número><s|m|h|d>, ex.: 15m');
+  .regex(/^[1-9]\d*[smhd]$/, 'Use o formato <número><s|m|h|d>, ex.: 15m')
+  .transform((value) => {
+    const unit = value.at(-1) as keyof typeof SECONDS_PER_UNIT;
+
+    return Number.parseInt(value, 10) * SECONDS_PER_UNIT[unit];
+  });
 
 const isOrigin = (value: string): boolean =>
   URL.canParse(value) && new URL(value).origin === value;
@@ -74,9 +82,9 @@ export const redisEnvSchema = z.object({
 
 export const jwtEnvSchema = z.object({
   JWT_ACCESS_SECRET: secret,
-  JWT_ACCESS_EXPIRES_IN: duration,
+  JWT_ACCESS_EXPIRES_IN: durationInSeconds,
   JWT_REFRESH_SECRET: secret,
-  JWT_REFRESH_EXPIRES_IN: duration,
+  JWT_REFRESH_EXPIRES_IN: durationInSeconds,
 });
 
 export const envSchema = z
@@ -89,7 +97,13 @@ export const envSchema = z
   .refine((env) => env.JWT_ACCESS_SECRET !== env.JWT_REFRESH_SECRET, {
     path: ['JWT_REFRESH_SECRET'],
     error: 'Deve ser diferente de JWT_ACCESS_SECRET',
+  })
+  .refine((env) => env.JWT_REFRESH_EXPIRES_IN > env.JWT_ACCESS_EXPIRES_IN, {
+    path: ['JWT_REFRESH_EXPIRES_IN'],
+    error: 'Deve ser maior que JWT_ACCESS_EXPIRES_IN',
   });
 
 export type Env = z.output<typeof envSchema>;
 export type DatabaseEnv = z.output<typeof databaseEnvSchema>;
+export type RedisEnv = z.output<typeof redisEnvSchema>;
+export type JwtEnv = z.output<typeof jwtEnvSchema>;

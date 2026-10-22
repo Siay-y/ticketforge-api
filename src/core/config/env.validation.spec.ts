@@ -86,3 +86,26 @@ describe('validateEnv', () => {
     ).toThrow(/DATABASE_PORT[\s\S]*JWT_ACCESS_EXPIRES_IN/);
   });
 });
+
+describe('validateEnv: durações JWT', () => {
+  it('converte a validade dos tokens para segundos', () => {
+    const env = validateEnv(validEnv);
+
+    expect(env.JWT_ACCESS_EXPIRES_IN).toBe(900);
+    expect(env.JWT_REFRESH_EXPIRES_IN).toBe(604_800);
+  });
+
+  it('exige refresh token mais longo que o access token', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, JWT_REFRESH_EXPIRES_IN: '10m' }),
+    ).toThrow(
+      /JWT_REFRESH_EXPIRES_IN: Deve ser maior que JWT_ACCESS_EXPIRES_IN/,
+    );
+  });
+
+  it('rejeita duração zero', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, JWT_ACCESS_EXPIRES_IN: '0m' }),
+    ).toThrow(/JWT_ACCESS_EXPIRES_IN/);
+  });
+});
