@@ -11,6 +11,32 @@ migration: `synchronize` e `migrationsRun` estão desligados em todos os ambient
 | [`database.module.ts`](../src/core/database/database.module.ts) | Conexão assíncrona do Nest, alimentada pelo `EnvService` |
 | [`data-source.ts`](../src/core/database/data-source.ts) | `DataSource` carregado apenas pela CLI do TypeORM |
 
+## Tabelas
+
+### `users`
+
+Criada pela migration `CreateUsers`, gerada a partir de
+[`user.orm-entity.ts`](../src/modules/users/infrastructure/persistence/typeorm/entities/user.orm-entity.ts).
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_users`, gerada pelo domínio |
+| `email` | `varchar(254)` | Índice único `UQ_users_email`; `CHECK` exige minúsculas |
+| `password_hash` | `varchar(255)` | Hash scrypt no formato PHC |
+| `role` | enum `user_role` | `admin`, `organizer` ou `customer` (padrão) |
+| `created_at` | `timestamptz` | Padrão `now()` |
+| `updated_at` | `timestamptz` | Padrão `now()` |
+
+O e-mail é normalizado para minúsculas pelo value object `Email`. O `CHECK`
+`CHK_users_email_lowercase` repete a regra no banco: se algum caminho futuro
+gravar sem passar pelo domínio, o índice único continua impedindo duplicatas
+por diferença de caixa.
+
+Dois cadastros simultâneos do mesmo e-mail podem passar juntos pela checagem
+prévia do caso de uso. Quem decide é o índice único: o segundo `INSERT` falha
+com o código `23505`, que o repositório traduz para `EmailAlreadyInUseError`
+(`409`). O teste e2e dispara três cadastros em paralelo e confere que só um vence.
+
 ## Runtime e CLI
 
 Os dois usam `buildDataSourceOptions`, com uma diferença deliberada no
@@ -21,6 +47,10 @@ carregamento de entidades:
   se o módulo dono estiver importado.
 - **CLI:** glob `modules/**/infrastructure/persistence/**/*.orm-entity.js`. Por
   isso o sufixo `.orm-entity.ts` é obrigatório para entidades persistidas.
+
+Dê nome explícito a toda constraint e índice (`primaryKeyConstraintName`,
+`@Index('UQ_...')`, `@Check('CHK_...')`). Nomes gerados por hash tornam a
+migration ilegível e impedem o repositório de reconhecer qual constraint falhou.
 
 ## Por que a CLI roda sobre o build
 

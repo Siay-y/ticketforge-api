@@ -18,21 +18,34 @@ camada e Clean Architecture, com o domínio isolado de framework e banco.
 | Banco de dados | PostgreSQL 18 via TypeORM 1.x, somente migrations (`synchronize: false`) |
 | Migrations | CLI do TypeORM sobre um `DataSource` próprio, fora do runtime do Nest |
 | Proteção de locks | `statement_timeout` e `idle_in_transaction_session_timeout` por conexão |
-| Cache e filas | Redis 8 com `noeviction`, pronto para BullMQ |
+| Cache e sessões | Redis 8 via ioredis, com `noeviction`, pronto para BullMQ |
+| Autenticação | JWT (access + refresh) com segredos e audiências separados |
+| Sessões | Uma por login, no Redis; logout revoga access e refresh na hora |
+| Refresh token | Rotação a cada uso, com troca atômica em Lua e detecção de reuso |
+| Autorização | `JwtAuthGuard` e `RolesGuard` globais: toda rota nasce protegida |
+| Papéis | `admin`, `organizer` e `customer`, restringidos por `@Roles()` |
+| Senhas | `scrypt` nativo (perfil OWASP), formato PHC e rehash automático |
+| Erros de negócio | `DomainError` com `code` estável, traduzido para HTTP por filtro global |
 | Validação de entrada | `ValidationPipe` global com `whitelist`, `forbidNonWhitelisted` e `transform` |
 | Segurança HTTP | Helmet e CORS restrito a uma lista explícita de origens |
-| Documentação | Swagger (OpenAPI) com esquema Bearer JWT, ativado por variável de ambiente |
+| Documentação | Swagger (OpenAPI) com esquema `JWT-auth`, ativado por variável de ambiente |
 | Versionamento | Por URI (`/api/v1/...`), com health check neutro de versão |
-| Saúde | `GET /api/health` com ping no PostgreSQL via `@nestjs/terminus` |
+| Saúde | `GET /api/health` com ping no PostgreSQL e no Redis via `@nestjs/terminus` |
 | Módulos | ESM nativo (`"type": "module"`, `nodenext`) |
 
 ### Rotas disponíveis
 
-| Rota | Descrição |
-| --- | --- |
-| `GET /api/health` | Estado da API e do PostgreSQL |
-| `GET /docs` | Interface do Swagger (com `SWAGGER_ENABLED=true`) |
-| `GET /docs/openapi.json` | Documento OpenAPI em JSON |
+| Rota | Acesso | Descrição |
+| --- | --- | --- |
+| `GET /api/health` | Pública | Estado da API, do PostgreSQL e do Redis |
+| `POST /api/v1/auth/register` | Pública | Cadastra um cliente e abre a primeira sessão |
+| `POST /api/v1/auth/login` | Pública | Autentica por e-mail e senha |
+| `POST /api/v1/auth/refresh` | Pública | Troca o refresh token por um novo par |
+| `POST /api/v1/auth/logout` | Autenticada | Encerra a sessão atual |
+| `GET /api/v1/users/me` | Autenticada | Perfil do usuário autenticado |
+| `GET /api/v1/users/:id` | `admin` | Perfil de qualquer usuário |
+| `GET /docs` | Pública | Interface do Swagger (com `SWAGGER_ENABLED=true`) |
+| `GET /docs/openapi.json` | Pública | Documento OpenAPI em JSON |
 
 ---
 
@@ -58,6 +71,21 @@ camada e Clean Architecture, com o domínio isolado de framework e banco.
   de linha que bloqueariam a venda dos demais compradores.
 - **Contrato HTTP estrito.** Campos fora do DTO devolvem `400`, o corpo chega ao
   controller como instância da classe e não há conversão implícita de tipos.
+- **Cadastro e login com sessão.** Cada login abre uma sessão própria no Redis,
+  então sair de um dispositivo não derruba os outros.
+- **Logout que vale na hora.** O access token só é aceito enquanto a sessão
+  existir; depois do logout, nem ele nem o refresh token passam.
+- **Refresh token de uso único.** Cada renovação troca o token por um novo de
+  forma atômica. Reapresentar um token já trocado é tratado como roubo e encerra
+  a sessão inteira.
+- **Papel sempre atual.** O papel do usuário é relido do banco a cada renovação,
+  então uma promoção ou rebaixamento vale no próximo refresh.
+- **RBAC fail-closed.** Toda rota exige token por padrão; abrir uma rota exige
+  `@Public()` e restringir por papel exige `@Roles()`.
+- **Senhas resistentes.** Política de força no cadastro, hash `scrypt` com salt
+  por senha e resposta idêntica para e-mail inexistente e senha errada.
+- **E-mail único de verdade.** Normalizado no domínio e garantido por índice
+  único no banco, inclusive em cadastros simultâneos.
 - **Infraestrutura local em um comando.** PostgreSQL e Redis com volumes,
   healthcheck e portas expostas apenas em `127.0.0.1`, lendo o mesmo `.env` da API.
 
@@ -71,7 +99,9 @@ camada e Clean Architecture, com o domínio isolado de framework e banco.
 | Framework | NestJS 12 (`@nestjs/platform-express`) |
 | Linguagem | TypeScript 6 com `strict` |
 | Banco de dados | PostgreSQL 18 com TypeORM 1.x e driver `pg` |
-| Cache e filas | Redis 8 (BullMQ nos próximos PRs) |
+| Cache e sessões | Redis 8 com ioredis (BullMQ nos próximos PRs) |
+| Autenticação | `@nestjs/jwt` (HS256) |
+| Hash de senha | `scrypt` do `node:crypto` |
 | Configuração | `@nestjs/config` e Zod 4 |
 | Validação | `class-validator` e `class-transformer` |
 | Segurança HTTP | Helmet |
@@ -117,6 +147,14 @@ npm run start:dev
 A API fica disponível em `http://localhost:3000/api` e o Swagger em
 `http://localhost:3000/docs`.
 
+Todo cadastro nasce `customer`. Para ter o primeiro administrador, cadastre-se
+pela API e promova o usuário no banco:
+
+```bash
+docker compose exec postgres psql -U ticketforge -d ticketforge \
+  -c "UPDATE users SET role = 'admin' WHERE email = 'voce@exemplo.com'"
+```
+
 ---
 
 ## Scripts
@@ -134,7 +172,7 @@ A API fica disponível em `http://localhost:3000/api` e o Swagger em
 | `npm run migration:revert` | Desfaz a última migration aplicada |
 | `npm run migration:show` | Lista as migrations e o estado de cada uma |
 | `npm test` | Testes unitários |
-| `npm run test:e2e` | Testes de ponta a ponta da camada HTTP |
+| `npm run test:e2e` | Testes de ponta a ponta (exigem `infra:up` e `migration:run`) |
 | `npm run lint` | Oxlint com checagem de tipos |
 | `npm run format` | Prettier em `src/` e `test/` |
 
@@ -147,7 +185,8 @@ apresentação:
 
 - [Arquitetura](docs/arquitetura.md): árvore de pastas, responsabilidade de cada camada e regra de dependência.
 - [Configuração](docs/configuracao.md): todas as variáveis de ambiente, padrões e regras de validação.
-- [Banco de dados](docs/banco-de-dados.md): migrations, convenções de entidade, pool e timeouts.
+- [Banco de dados](docs/banco-de-dados.md): tabelas, migrations, convenções de entidade, pool e timeouts.
+- [Autenticação, sessão e RBAC](docs/autenticacao.md): tokens, sessão no Redis, rotação, senhas e papéis.
 - [Segurança](docs/seguranca.md): o que cada proteção faz e o que ainda falta.
 
 ---
@@ -158,6 +197,14 @@ apresentação:
   segredo fraco interrompem o boot antes de abrir qualquer conexão.
 - **Segredos não vazam no log.** A mensagem de erro de configuração mostra o
   nome da variável e o motivo, nunca o conteúdo.
+- **Rotas protegidas por padrão.** Uma rota sem decorator exige token; nenhuma
+  fica pública por esquecimento.
+- **Sessões revogáveis e refresh de uso único.** Logout e detecção de reuso
+  encerram a sessão no Redis imediatamente.
+- **JWT sem brechas clássicas.** Algoritmo fixo, audiência por tipo de token e
+  payload validado: `alg: none` e troca de refresh por access são recusados.
+- **Senhas nunca saem do módulo de usuários.** O hash fica no banco e nenhuma
+  resposta ou caso de uso exportado o devolve.
 - **`synchronize` desligado em todos os ambientes.** O schema só muda por
   migration revisada e versionada.
 - **CORS por lista explícita.** Origens não listadas não recebem cabeçalhos CORS
