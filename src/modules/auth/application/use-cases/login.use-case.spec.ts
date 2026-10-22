@@ -56,6 +56,7 @@ describe('LoginUseCase', () => {
     expect(sessions.sessions.size).toBe(2);
   });
 
+  // gitguardian: ignore
   it('recusa credenciais inválidas sem abrir sessão', async () => {
     await expect(
       login.execute({ email: 'cliente@ticketforge.dev', password: 'errada' }),
