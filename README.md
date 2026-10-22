@@ -255,7 +255,7 @@ Detalhes e limitações conhecidas em [docs/seguranca.md](docs/seguranca.md).
 
 ## Licença
 
-Projeto privado, sem licença de uso ou distribuição (`UNLICENSED`).
+Distribuído sob a licença MIT. Consulte o arquivo [LICENSE](LICENSE).
 
 Copyright © 2026 Luiz Henrique Porfírio Santos.
 
