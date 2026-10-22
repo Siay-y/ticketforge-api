@@ -4,7 +4,7 @@
   "description": "Plataforma de bilhetagem e venda de ingressos em lote com alta concorrência.",
   "author": "Luiz Santos",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=24.18.0"
