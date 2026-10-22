@@ -37,6 +37,67 @@ prévia do caso de uso. Quem decide é o índice único: o segundo `INSERT` falh
 com o código `23505`, que o repositório traduz para `EmailAlreadyInUseError`
 (`409`). O teste e2e dispara três cadastros em paralelo e confere que só um vence.
 
+### `events`
+
+Criada pela migration `CreateEventsAndTicketBatches`. Regras de negócio em
+[Eventos](eventos.md).
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_events` |
+| `organizer_id` | `uuid` | FK `FK_events_organizer` para `users`, `ON DELETE RESTRICT` |
+| `title` | `varchar(160)` | |
+| `slug` | `varchar(100)` | Índice único `UQ_events_slug` |
+| `description` | `text` | |
+| `venue` | `varchar(200)` | |
+| `event_date` | `timestamptz` | |
+| `max_capacity` | `integer` | `CHECK` maior que zero |
+| `status` | enum `event_status` | `draft` (padrão), `published`, `cancelled`, `finished` |
+| `created_at` / `updated_at` | `timestamptz` | Padrão `now()` |
+| `deleted_at` | `timestamptz` nulo | Soft delete (`@DeleteDateColumn`) |
+
+`ON DELETE RESTRICT` impede apagar um usuário que organiza eventos: o histórico
+de quem criou cada evento não se perde.
+
+### `ticket_batches`
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_ticket_batches` |
+| `event_id` | `uuid` | FK `FK_ticket_batches_event`, `ON DELETE CASCADE`; indexada |
+| `name` | `varchar(100)` | |
+| `unit_price_cents` | `integer` | `CHECK` maior ou igual a zero |
+| `total_quantity` | `integer` | `CHECK` maior que zero |
+| `available_quantity` | `integer` | `CHECK` entre 0 e `total_quantity` |
+| `sales_start_date` / `sales_end_date` | `timestamptz` | `CHECK` início antes do fim |
+| `version` | `integer` | `@VersionColumn`: começa em 1 e sobe a cada `UPDATE` |
+| `created_at` / `updated_at` | `timestamptz` | Padrão `now()` |
+
+Os `CHECK` repetem as regras do domínio que cabem numa linha só. Mesmo um
+`UPDATE` manual ou um bug futuro não consegue gravar estoque negativo ou maior
+que o total. A regra que envolve várias linhas (soma dos lotes até a capacidade)
+fica no domínio, protegida pelo lock descrito em
+[Eventos](eventos.md#concorrência-e-transações).
+
+### Índices de `events`
+
+| Índice | Definição | Atende |
+| --- | --- | --- |
+| `UQ_events_slug` | `UNIQUE (slug)` | Detalhe público por slug |
+| `IDX_events_status_event_date` | `(status, event_date) WHERE deleted_at IS NULL` | Listagem pública: filtro por status, intervalo e ordenação por data |
+| `IDX_events_title_trgm` | `GIN (title gin_trgm_ops)` | Busca `ILIKE '%termo%'` no título |
+| `IDX_events_venue_trgm` | `GIN (venue gin_trgm_ops)` | Busca no local |
+| `IDX_events_organizer_id` | `(organizer_id)` | Eventos de um organizador e a checagem da FK |
+
+O índice de status e data é **parcial**: linhas removidas não entram nele, então
+ele não cresce com o histórico de eventos apagados.
+
+Os índices trigram dependem da extensão `pg_trgm` (incluída na imagem oficial do
+PostgreSQL e confiável desde o PG 13, sem precisar de superusuário). O TypeORM
+não gera índice GIN com operator class, então eles são escritos à mão na
+migration e declarados na entidade com `@Index(nome, { synchronize: false })`.
+Sem essa declaração, o próximo `migration:generate` tentaria apagá-los.
+
 ## Runtime e CLI
 
 Os dois usam `buildDataSourceOptions`, com uma diferença deliberada no

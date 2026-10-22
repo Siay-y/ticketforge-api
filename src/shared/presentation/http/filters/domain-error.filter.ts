@@ -13,6 +13,7 @@ import type { ErrorResponse } from '../error.response.js';
 
 const STATUS_BY_KIND: Record<DomainErrorKind, HttpStatus> = {
   validation: HttpStatus.BAD_REQUEST,
+  business_rule: HttpStatus.UNPROCESSABLE_ENTITY,
   conflict: HttpStatus.CONFLICT,
   not_found: HttpStatus.NOT_FOUND,
   unauthorized: HttpStatus.UNAUTHORIZED,

@@ -1,6 +1,14 @@
-/** Categoria semântica do erro. A tradução para status HTTP é feita na apresentação. */
+/**
+ * Categoria semântica do erro. A tradução para status HTTP é feita na apresentação.
+ * `validation` é dado malformado; `business_rule` é dado bem formado que viola uma regra.
+ */
 export type DomainErrorKind =
-  'validation' | 'conflict' | 'not_found' | 'unauthorized' | 'forbidden';
+  | 'validation'
+  | 'business_rule'
+  | 'conflict'
+  | 'not_found'
+  | 'unauthorized'
+  | 'forbidden';
 
 export abstract class DomainError extends Error {
   abstract readonly kind: DomainErrorKind;

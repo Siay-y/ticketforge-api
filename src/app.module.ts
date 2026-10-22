@@ -5,6 +5,7 @@ import { DatabaseModule } from './core/database/database.module.js';
 import { HealthModule } from './core/health/health.module.js';
 import { RedisModule } from './core/redis/redis.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { EventsModule } from './modules/events/events.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { DomainErrorFilter } from './shared/presentation/http/filters/domain-error.filter.js';
 
@@ -16,6 +17,7 @@ import { DomainErrorFilter } from './shared/presentation/http/filters/domain-err
     HealthModule,
     UsersModule,
     AuthModule,
+    EventsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: DomainErrorFilter }],
 })
