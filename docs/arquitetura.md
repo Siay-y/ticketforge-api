@@ -30,12 +30,15 @@ ticket-forge/
     ├── shared/                    # blocos reutilizáveis entre módulos
     │   ├── domain/
     │   │   └── errors/            # DomainError: base de todo erro de negócio
-    │   ├── application/           # (futuro) contratos de UnitOfWork
-    │   ├── infrastructure/        # (futuro) UnitOfWork em TypeORM, outbox
+    │   ├── application/
+    │   │   └── pagination.ts      # PageRequest, Page<T>
+    │   ├── infrastructure/        # (futuro) outbox
     │   └── presentation/
     │       └── http/
     │           ├── decorators/    # @Public()
     │           ├── filters/       # DomainError -> status HTTP
+    │           ├── validators/    # @IsAfterProperty(), @IsFutureDate()
+    │           ├── pagination.ts  # PaginationQuery, PaginationMetaResponse
     │           └── error.response.ts
     │
     └── modules/
@@ -58,6 +61,27 @@ ticket-forge/
         │   ├── presentation/http/ # UsersController e DTOs de resposta
         │   ├── testing/           # dublês para testes, fora do build
         │   └── users.module.ts
+        │
+        ├── events/                # eventos e lotes de ingressos
+        │   ├── domain/
+        │   │   ├── entities/      # Event (raiz do agregado), TicketBatch
+        │   │   ├── value-objects/ # Slug, EventStatus
+        │   │   ├── errors/
+        │   │   └── repositories/  # EventRepository (escrita do agregado)
+        │   ├── application/
+        │   │   ├── ports/         # EventCatalog (leitura)
+        │   │   ├── policies/      # ownership: quem gerencia qual evento
+        │   │   ├── dtos/          # EventDetailsView, EventSummaryView, TicketBatchView
+        │   │   ├── errors/
+        │   │   └── use-cases/     # Create, Update, Publish, Cancel, Delete, Add/UpdateBatch, List, Get
+        │   ├── infrastructure/persistence/typeorm/
+        │   │   ├── entities/      # EventOrmEntity, TicketBatchOrmEntity
+        │   │   ├── mappers/       # EventMapper
+        │   │   ├── repositories/  # TypeOrmEventRepository (transação + lock)
+        │   │   └── queries/       # TypeOrmEventCatalog
+        │   ├── presentation/http/ # EventsController, DTOs e @ApiManageEvent()
+        │   ├── testing/
+        │   └── events.module.ts
         │
         └── auth/                  # sessão, tokens e controle de acesso
             ├── application/
@@ -127,9 +151,10 @@ framework muda, não quando o negócio muda.
 ### `shared`
 
 Abstrações genéricas usadas por vários módulos, organizadas nas mesmas quatro
-camadas e sujeitas à mesma regra de dependência. Entra aqui apenas o que já tem
-dois ou mais consumidores reais: `DomainError` (usado por `users` e `auth`) e
-`@Public()` (usado por `auth` e `core/health`).
+camadas e sujeitas à mesma regra de dependência. Entra aqui o que já tem dois ou
+mais consumidores reais, como `DomainError` (todos os módulos) e `@Public()`
+(`auth`, `events` e `core/health`), ou o que define um padrão da API inteira,
+como o formato de paginação e os validadores de data dos DTOs.
 
 ## Regra de dependência
 
@@ -155,10 +180,31 @@ que pode atravessar a fronteira:
 | --- | --- | --- | --- |
 | `application` | `application` de outro módulo | Casos de uso exportados pelo `*.module.ts` | `LoginUseCase` chama `VerifyCredentialsUseCase` |
 | Qualquer camada | `domain` de outro módulo | Value objects e enums de linguagem compartilhada | `UserRole` no token e no `@Roles()` |
-| `presentation` | `auth/presentation` | Decorators de controle de acesso | `@Roles()` e `@CurrentUser()` em `UsersController` |
+| `presentation` | `auth/presentation` | Decorators de controle de acesso | `@Roles()` e `@CurrentUser()` em `UsersController` e `EventsController` |
+| `infrastructure` | Tabela de outro módulo | Somente chave estrangeira, declarada pelo nome da entidade | `@ManyToOne('UserOrmEntity')` em `EventOrmEntity` |
 
 Os casos de uso exportados devolvem read models (`UserView`), nunca a entidade
 de domínio: o chamador não consegue alterar um `User` de outro módulo.
+
+`events` guarda apenas o `organizerId` do dono, sem importar nada de `users`
+além do enum `UserRole`. A FK para `users` existe no banco, mas é declarada pelo
+nome da entidade (`'UserOrmEntity'`), sem import da infraestrutura do outro
+módulo.
+
+## Escrita e leitura separadas
+
+Quando a leitura tem forma diferente da escrita, o módulo usa duas portas (CQRS
+leve, no mesmo banco):
+
+| Porta | Camada | Uso |
+| --- | --- | --- |
+| `EventRepository` | `domain` | Carrega e grava o agregado inteiro, com as regras e sob lock |
+| `EventCatalog` | `application` | Devolve read models paginados para o catálogo público, sem carregar o agregado |
+
+O repositório de escrita expõe `update(id, change)`: carrega com
+`SELECT ... FOR UPDATE`, aplica a função no domínio e grava na mesma transação.
+O caso de uso diz o que mudar; a infraestrutura cuida de transação e lock. Ver
+[Eventos](eventos.md#concorrência-e-transações).
 
 A dependência entre módulos Nest é de mão única: `AuthModule` importa
 `UsersModule`, nunca o contrário. Os decorators de acesso são só metadados e os
@@ -175,8 +221,13 @@ guards são globais (`APP_GUARD`), então `users` usa `@Roles()` sem importar o
 | Nomes de constraint | Explícitos (`PK_users`, `UQ_users_email`), nunca hash gerado |
 | Migration | `src/core/database/migrations/<timestamp>-<Nome>.ts` |
 | Erro de negócio | Subclasse de `DomainError` com `kind` e `code` estável |
+| `kind` do erro | `validation` -> 400, `business_rule` -> 422, `conflict` -> 409, `not_found` -> 404, `unauthorized` -> 401, `forbidden` -> 403 |
+| Dinheiro | Inteiro em centavos, com sufixo `Cents` no nome (`unitPriceCents`) |
+| Paginação | `PaginationQuery` na entrada e `{ data, meta }` na saída |
+| Relógio | O domínio recebe `now` por parâmetro; o caso de uso passa `new Date()` |
 | Teste unitário | `*.spec.ts` ao lado do arquivo testado |
 | Dublês de teste | `<modulo>/testing/`, excluídos do build de produção |
 | Teste e2e | `test/*.e2e-spec.ts` |
 | Rotas | Versionadas por URI (`/api/v1/...`); health é neutro de versão |
 | Acesso | Toda rota é protegida; abrir exige `@Public()` explícito |
+| Ownership | Checado no caso de uso (`policies/`), não só no controller |

@@ -1,0 +1,372 @@
+# Guia de testes manuais do módulo de eventos.
+# Requer a extensão REST Client (humao.rest-client) no VS Code: clique em
+# "Send Request" acima de cada bloco, na ordem. Respostas de um passo alimentam
+# os seguintes pelas variáveis {{nome.response...}}.
+#
+# Pré-requisito: npm run dev (sobe a infraestrutura, aplica as migrations e inicia a API).
+# Para recomeçar do zero, incremente @run (os e-mails mudam).
+
+@baseUrl = http://localhost:3000/api/v1
+@run = 1
+
+###############################################################################
+# 1. Contas
+# Cada cadastro usa uma senha aleatória: não há credencial escrita neste arquivo.
+###############################################################################
+
+# @name registerOwner
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "dono{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###
+
+# @name registerIntruder
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "intruso{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###
+
+# @name registerAdmin
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "admin{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###
+
+# @name registerCustomer
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "cliente{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###############################################################################
+# 2. Promova os papéis no terminal (troque o 1 pelo valor de @run):
+#
+#   docker compose exec postgres psql -U ticketforge -d ticketforge -c "UPDATE users SET role = 'organizer' WHERE email IN ('dono1@ticketforge.dev', 'intruso1@ticketforge.dev'); UPDATE users SET role = 'admin' WHERE email = 'admin1@ticketforge.dev';"
+#
+# Depois, renove os tokens: o refresh relê o papel do banco.
+###############################################################################
+
+# @name refreshOwner
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{registerOwner.response.body.$.refreshToken}}" }
+
+###
+
+# @name refreshIntruder
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{registerIntruder.response.body.$.refreshToken}}" }
+
+###
+
+# @name refreshAdmin
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{registerAdmin.response.body.$.refreshToken}}" }
+
+###
+
+@ownerToken = {{refreshOwner.response.body.$.accessToken}}
+@intruderToken = {{refreshIntruder.response.body.$.accessToken}}
+@adminToken = {{refreshAdmin.response.body.$.accessToken}}
+@customerToken = {{registerCustomer.response.body.$.accessToken}}
+
+###############################################################################
+# 3. Autorização por papel
+###############################################################################
+
+# Esperado: 401 INVALID_TOKEN (sem token)
+POST {{baseUrl}}/events
+Content-Type: application/json
+
+{ "title": "Sem token", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 60 d}}", "maxCapacity": 100 }
+
+###
+
+# Esperado: 403 (papel customer)
+POST {{baseUrl}}/events
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{ "title": "Cliente tentando", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 60 d}}", "maxCapacity": 100 }
+
+###
+
+# Esperado: 400 "property organizerId should not exist" (não dá para criar em nome de outro)
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "title": "Em nome de outro", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 60 d}}", "maxCapacity": 100, "organizerId": "00000000-0000-4000-8000-000000000000" }
+
+###############################################################################
+# 4. Criação com lotes iniciais (transação ACID)
+###############################################################################
+
+# Esperado: 201, status "draft", allocatedQuantity 800
+# @name createEvent
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "title": "Festival de Verão {{run}}",
+  "description": "Dois dias de música ao ar livre com 30 atrações nacionais.",
+  "venue": "Allianz Parque, São Paulo - SP",
+  "eventDate": "{{$datetime iso8601 60 d}}",
+  "maxCapacity": 1000,
+  "initialBatches": [
+    {
+      "name": "1º Lote - Meia-entrada",
+      "unitPriceCents": 15000,
+      "totalQuantity": 500,
+      "salesStartDate": "{{$datetime iso8601 1 d}}",
+      "salesEndDate": "{{$datetime iso8601 20 d}}"
+    },
+    {
+      "name": "1º Lote - Inteira",
+      "unitPriceCents": 30000,
+      "totalQuantity": 300,
+      "salesStartDate": "{{$datetime iso8601 1 d}}",
+      "salesEndDate": "{{$datetime iso8601 20 d}}"
+    }
+  ]
+}
+
+###
+
+@eventId = {{createEvent.response.body.$.id}}
+@eventSlug = {{createEvent.response.body.$.slug}}
+@batchId = {{createEvent.response.body.$.batches[0].id}}
+
+###
+
+# Esperado: 422 EVENT_CAPACITY_EXCEEDED (600 + 401 > 1000). Nada é gravado: o
+# evento "Estourado" não aparece no banco nem em nenhuma listagem.
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "title": "Estourado {{run}}",
+  "description": "x",
+  "venue": "Arena",
+  "eventDate": "{{$datetime iso8601 60 d}}",
+  "maxCapacity": 1000,
+  "initialBatches": [
+    { "name": "A", "unitPriceCents": 100, "totalQuantity": 600, "salesStartDate": "{{$datetime iso8601 1 d}}", "salesEndDate": "{{$datetime iso8601 20 d}}" },
+    { "name": "B", "unitPriceCents": 100, "totalQuantity": 401, "salesStartDate": "{{$datetime iso8601 1 d}}", "salesEndDate": "{{$datetime iso8601 20 d}}" }
+  ]
+}
+
+###
+
+# Esperado: 400 eventDate deve ser uma data futura
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "title": "No passado", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 -1 d}}", "maxCapacity": 100 }
+
+###
+
+# Esperado: 400 salesEndDate deve ser posterior a salesStartDate (validação no DTO)
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "title": "Datas trocadas", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 60 d}}", "maxCapacity": 100,
+  "initialBatches": [
+    { "name": "A", "unitPriceCents": 100, "totalQuantity": 10, "salesStartDate": "{{$datetime iso8601 10 d}}", "salesEndDate": "{{$datetime iso8601 5 d}}" }
+  ]
+}
+
+###
+
+# Esperado: 422 INVALID_EVENT_SCHEDULE (vendas terminam depois do evento: regra do domínio)
+POST {{baseUrl}}/events
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "title": "Vendas depois do show", "description": "x", "venue": "Arena", "eventDate": "{{$datetime iso8601 20 d}}", "maxCapacity": 100,
+  "initialBatches": [
+    { "name": "A", "unitPriceCents": 100, "totalQuantity": 10, "salesStartDate": "{{$datetime iso8601 1 d}}", "salesEndDate": "{{$datetime iso8601 21 d}}" }
+  ]
+}
+
+###############################################################################
+# 5. Ownership
+###############################################################################
+
+# Esperado: 403 EVENT_ACCESS_DENIED (organizador que não é o dono)
+PATCH {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{intruderToken}}
+Content-Type: application/json
+
+{ "title": "Invadido" }
+
+###
+
+# Esperado: 403 EVENT_ACCESS_DENIED
+POST {{baseUrl}}/events/{{eventId}}/batches
+Authorization: Bearer {{intruderToken}}
+Content-Type: application/json
+
+{ "name": "Lote pirata", "unitPriceCents": 1, "totalQuantity": 1, "salesStartDate": "{{$datetime iso8601 1 d}}", "salesEndDate": "{{$datetime iso8601 2 d}}" }
+
+###
+
+# Esperado: 403 EVENT_ACCESS_DENIED
+POST {{baseUrl}}/events/{{eventId}}/publish
+Authorization: Bearer {{intruderToken}}
+
+###
+
+# Esperado: 200 (admin gerencia qualquer evento)
+PATCH {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "description": "Revisado pela administração." }
+
+###############################################################################
+# 6. Capacidade e coerência temporal nas alterações
+###############################################################################
+
+# Esperado: 422 EVENT_CAPACITY_EXCEEDED (800 + 201 > 1000)
+POST {{baseUrl}}/events/{{eventId}}/batches
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "name": "2º Lote", "unitPriceCents": 35000, "totalQuantity": 201, "salesStartDate": "{{$datetime iso8601 21 d}}", "salesEndDate": "{{$datetime iso8601 50 d}}" }
+
+###
+
+# Esperado: 201 (800 + 200 = 1000, exatamente no limite)
+POST {{baseUrl}}/events/{{eventId}}/batches
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "name": "2º Lote", "unitPriceCents": 35000, "totalQuantity": 200, "salesStartDate": "{{$datetime iso8601 21 d}}", "salesEndDate": "{{$datetime iso8601 50 d}}" }
+
+###
+
+# Esperado: 422 EVENT_CAPACITY_EXCEEDED (capacidade abaixo dos 1000 já distribuídos)
+PATCH {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "maxCapacity": 999 }
+
+###
+
+# Esperado: 422 INVALID_EVENT_SCHEDULE (o 2º lote vende até o dia 50)
+PATCH {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "eventDate": "{{$datetime iso8601 40 d}}" }
+
+###############################################################################
+# 7. Imutabilidade do estoque vendido
+# Simule 30 vendas no 1º lote (o módulo de pedidos ainda não existe):
+#
+#   docker compose exec postgres psql -U ticketforge -d ticketforge -c "UPDATE ticket_batches SET available_quantity = total_quantity - 30 WHERE id = '<batchId>';"
+#
+# O <batchId> é o id do primeiro lote na resposta de createEvent.
+###############################################################################
+
+# Esperado: 422 TICKET_BATCH_QUANTITY_BELOW_SOLD
+PATCH {{baseUrl}}/events/{{eventId}}/batches/{{batchId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "totalQuantity": 29 }
+
+###
+
+# Esperado: 200 com totalQuantity 100, availableQuantity 70, soldQuantity 30
+PATCH {{baseUrl}}/events/{{eventId}}/batches/{{batchId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "totalQuantity": 100 }
+
+###############################################################################
+# 8. Publicação e catálogo público (sem token)
+###############################################################################
+
+# Esperado: 200, status "published"
+POST {{baseUrl}}/events/{{eventId}}/publish
+Authorization: Bearer {{ownerToken}}
+
+###
+
+# Esperado: 200 com data[] e meta (page, limit, totalItems, totalPages...)
+GET {{baseUrl}}/events?page=1&limit=10&search=festival
+
+###
+
+# Filtro por intervalo de datas
+GET {{baseUrl}}/events?from={{$datetime iso8601 30 d}}&to={{$datetime iso8601 90 d}}
+
+###
+
+# Esperado: 200 com os lotes, preços e disponibilidade
+GET {{baseUrl}}/events/{{eventSlug}}
+
+###
+
+# Esperado: 400 (limit acima de 100)
+GET {{baseUrl}}/events?limit=500
+
+###
+
+# Esperado: 400 to deve ser igual ou posterior a from
+GET {{baseUrl}}/events?from={{$datetime iso8601 10 d}}&to={{$datetime iso8601 5 d}}
+
+###############################################################################
+# 9. Ciclo de vida e soft delete
+###############################################################################
+
+# Esperado: 422 INVALID_STATUS_TRANSITION (publicado precisa ser cancelado antes)
+DELETE {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{ownerToken}}
+
+###
+
+# Esperado: 200, status "cancelled"
+POST {{baseUrl}}/events/{{eventId}}/cancel
+Authorization: Bearer {{ownerToken}}
+
+###
+
+# Esperado: 422 EVENT_NOT_EDITABLE
+PATCH {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "title": "Reaberto" }
+
+###
+
+# Esperado: 204 (soft delete: a linha fica no banco com deleted_at)
+DELETE {{baseUrl}}/events/{{eventId}}
+Authorization: Bearer {{ownerToken}}
+
+###
+
+# Esperado: 404 EVENT_NOT_FOUND
+GET {{baseUrl}}/events/{{eventSlug}}

@@ -24,6 +24,25 @@ Detalhes completos em [Autenticação, sessão e RBAC](autenticacao.md).
 - **Sem escalada no cadastro.** O papel é sempre `customer`; enviar `role` no
   corpo devolve `400`.
 
+## Autorização de recurso (ownership)
+
+Papel diz o que um usuário pode fazer em geral; ownership diz sobre **qual**
+registro. Nos eventos, as duas checagens são independentes:
+
+- **Papel:** `@Roles(ORGANIZER, ADMIN)` nas rotas de gestão barra `customer`
+  com `403` antes de qualquer consulta.
+- **Dono:** a política `assertCanManage` roda dentro do caso de uso, com o
+  evento já carregado: organizador só gerencia evento com `organizerId` igual ao
+  seu id; admin gerencia qualquer um. Falha devolve `403 EVENT_ACCESS_DENIED`.
+- **Dono imposto pelo servidor:** `organizerId` vem sempre do token. Enviá-lo no
+  corpo devolve `400`, então ninguém cria evento em nome de outro.
+- **Defesa em profundidade:** o caso de uso de criação repete a checagem de
+  papel. Se uma rota futura esquecer o `@Roles()`, a regra continua valendo.
+
+Evento inexistente responde `404` antes da checagem de dono. Isso revela a
+organizadores autenticados que um id existe, o que é aceitável: os ids são UUID
+aleatórios e eventos publicados já são públicos.
+
 ## Configuração
 
 - **Fail fast.** O schema Zod roda antes de qualquer módulo. Variável ausente ou

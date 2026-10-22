@@ -150,11 +150,14 @@ não force um cálculo que esgote memória.
 
 ### Papéis
 
-| Papel | Valor | Como é obtido |
-| --- | --- | --- |
-| Cliente | `customer` | Todo cadastro pela API |
-| Organizador | `organizer` | Concedido por um administrador |
-| Administrador | `admin` | Concedido por um administrador |
+| Papel | Valor | Como é obtido | Pode |
+| --- | --- | --- | --- |
+| Cliente | `customer` | Todo cadastro pela API | Ver o catálogo e o próprio perfil |
+| Organizador | `organizer` | Concedido por um administrador | Criar eventos e gerenciar **os próprios** eventos e lotes |
+| Administrador | `admin` | Concedido por um administrador | Gerenciar qualquer evento e consultar qualquer usuário |
+
+A restrição "os próprios" é autorização de recurso, checada no caso de uso. Ver
+[Segurança](seguranca.md#autorização-de-recurso-ownership).
 
 O cadastro nunca aceita papel no corpo: um `role` enviado é rejeitado com `400`
 pelo `forbidNonWhitelisted`.
