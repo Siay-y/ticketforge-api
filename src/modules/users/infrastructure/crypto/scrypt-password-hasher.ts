@@ -10,8 +10,7 @@ export interface ScryptParams {
   saltLength: number;
 }
 
-// Perfil da OWASP (N=2^15, r=8, p=3): mesma resistência de N=2^17 com 1/4 da
-// memória por hash (32 MiB), o que importa em picos de login simultâneo.
+// OWASP (N=2^15, r=8, p=3): mesma força de N=2^17 com 1/4 da memória.
 export const DEFAULT_SCRYPT_PARAMS: ScryptParams = {
   logCost: 15,
   blockSize: 8,
@@ -20,7 +19,7 @@ export const DEFAULT_SCRYPT_PARAMS: ScryptParams = {
   saltLength: 16,
 };
 
-// Teto para parâmetros lidos do banco: um hash adulterado não pode esgotar CPU ou memória.
+// Teto para parâmetros vindos do banco: hash adulterado não esgota recursos.
 const MAX_LOG_COST = 20;
 const MAX_FACTOR = 16;
 

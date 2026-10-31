@@ -70,8 +70,7 @@ export class CreateEventsAndTicketBatches1792696351806 implements MigrationInter
             ADD CONSTRAINT "FK_ticket_batches_event" FOREIGN KEY ("event_id") REFERENCES "events"("id") ON DELETE CASCADE ON UPDATE NO ACTION
         `);
 
-    // Escrito à mão: o TypeORM não gera índice GIN com operator class. Sem ele,
-    // a busca `ILIKE '%termo%'` do catálogo varre a tabela inteira.
+    // Escrito à mão: o TypeORM não gera índice GIN com operator class.
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
     await queryRunner.query(`
             CREATE INDEX "IDX_events_title_trgm" ON "events" USING gin ("title" gin_trgm_ops)
@@ -82,7 +81,7 @@ export class CreateEventsAndTicketBatches1792696351806 implements MigrationInter
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // A extensão pg_trgm fica: pode ter sido criada antes e servir a outros objetos.
+    // A extensão fica: pode servir a outros objetos.
     await queryRunner.query(`DROP INDEX "public"."IDX_events_venue_trgm"`);
     await queryRunner.query(`DROP INDEX "public"."IDX_events_title_trgm"`);
     await queryRunner.query(`

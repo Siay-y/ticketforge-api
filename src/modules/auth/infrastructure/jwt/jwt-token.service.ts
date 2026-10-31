@@ -15,8 +15,7 @@ import type {
 } from '../../application/ports/token-service.js';
 
 const ISSUER = 'ticket-forge';
-// Audiências distintas: um tipo de token nunca é aceito no lugar do outro,
-// mesmo que os segredos fossem iguais.
+// Audiências distintas: um tipo de token nunca vale pelo outro.
 const ACCESS_AUDIENCE = 'ticket-forge:access';
 const REFRESH_AUDIENCE = 'ticket-forge:refresh';
 const ALGORITHM = 'HS256';
@@ -112,7 +111,7 @@ export class JwtTokenService implements TokenService {
     let payload: unknown;
 
     try {
-      // Algoritmo fixo: impede `alg: none` e a troca por outro algoritmo no cabeçalho.
+      // Algoritmo fixo: barra `alg: none` e troca de algoritmo.
       payload = await this.jwt.verifyAsync(token, {
         secret,
         audience,

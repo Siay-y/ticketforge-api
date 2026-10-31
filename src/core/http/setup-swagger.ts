@@ -1,7 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
-/** Nome do esquema de segurança, referenciado por `@ApiBearerAuth(BEARER_AUTH)`. */
 export const BEARER_AUTH = 'JWT-auth';
 
 export function setupSwagger(app: INestApplication, path: string): void {

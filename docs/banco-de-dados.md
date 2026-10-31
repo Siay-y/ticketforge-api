@@ -98,6 +98,78 @@ não gera índice GIN com operator class, então eles são escritos à mão na
 migration e declarados na entidade com `@Index(nome, { synchronize: false })`.
 Sem essa declaração, o próximo `migration:generate` tentaria apagá-los.
 
+### `coupons`
+
+Criada pela migration `CreateCouponsAndOrders`. Regras em [Pedidos](pedidos.md).
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_coupons` |
+| `event_id` | `uuid` | FK `FK_coupons_event`, `ON DELETE CASCADE` |
+| `code` | `varchar(32)` | Único por evento (`UQ_coupons_event_code`); `CHECK` exige maiúsculas |
+| `discount_type` | enum `coupon_discount_type` | `percentage` ou `fixed_cents` |
+| `discount_value` | `integer` | `CHECK` maior que zero; até 10000 se `percentage` |
+| `max_uses` | `integer` nulo | `CHECK` nulo ou maior que zero |
+| `used_count` | `integer` | Padrão 0; `CHECK` entre 0 e `max_uses` |
+| `expires_at` | `timestamptz` | |
+| `is_active` | `boolean` | Padrão `true` |
+| `created_at` / `updated_at` | `timestamptz` | Padrão `now()` |
+
+### `orders`
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_orders` |
+| `customer_id` | `uuid` | FK `FK_orders_customer` para `users`, `RESTRICT` |
+| `event_id` | `uuid` | FK `FK_orders_event` para `events`, `RESTRICT` |
+| `coupon_id` | `uuid` nulo | FK `FK_orders_coupon` para `coupons`, `RESTRICT` |
+| `status` | enum `order_status` | `pending` (padrão), `paid`, `cancelled`, `expired` |
+| `subtotal_cents` / `discount_cents` / `total_cents` | `integer` | `CHECK`: não negativos, desconto até o subtotal, `total = subtotal - desconto` |
+| `idempotency_key` | `uuid` | Único por cliente (`UQ_orders_customer_idempotency_key`) |
+| `request_hash` | `char(64)` | SHA-256 do corpo da requisição |
+| `expires_at` | `timestamptz` | Fim da reserva |
+| `paid_at` | `timestamptz` nulo | `CHECK`: preenchido se, e só se, `status = 'paid'` |
+| `created_at` / `updated_at` | `timestamptz` | Padrão `now()` |
+
+As FKs `RESTRICT` preservam o histórico: não dá para apagar um usuário, um
+evento ou um cupom que tenha pedidos. Por isso evento usa soft delete.
+
+### `order_items`
+
+| Coluna | Tipo | Regra |
+| --- | --- | --- |
+| `id` | `uuid` | Chave primária `PK_order_items` |
+| `order_id` | `uuid` | FK `FK_order_items_order`, `ON DELETE CASCADE` |
+| `batch_id` | `uuid` | FK `FK_order_items_batch` para `ticket_batches`, `RESTRICT` |
+| `quantity` | `integer` | `CHECK` maior que zero |
+| `unit_price_cents` | `integer` | `CHECK` maior ou igual a zero; snapshot do preço do lote |
+| `total_price_cents` | `integer` | `CHECK` igual a `quantity * unit_price_cents` |
+
+`UQ_order_items_order_batch (order_id, batch_id)` impede o mesmo lote duas vezes
+no pedido e também serve às buscas por `order_id`.
+
+### Índices de `orders`
+
+| Índice | Definição | Atende |
+| --- | --- | --- |
+| `UQ_orders_customer_idempotency_key` | `UNIQUE (customer_id, idempotency_key)` | Busca do pedido por chave e rede de segurança contra duplicata |
+| `IDX_orders_status_expires_at` | `(status, expires_at)` | Varredura de reservas vencidas: `status = 'pending' AND expires_at < now()` |
+| `IDX_orders_customer_created_at` | `(customer_id, created_at)` | `GET /orders/me`, mais recentes primeiro |
+| `IDX_orders_event_id` / `IDX_orders_coupon_id` | | Checagem das FKs e consultas por evento ou cupom |
+
+## Locks e concorrência
+
+| Lock | Onde | Para quê |
+| --- | --- | --- |
+| `SELECT ... FOR UPDATE` em `ticket_batches`, por id | Reserva, cancelamento de pedido, alteração de evento | Serializar quem mexe no mesmo estoque |
+| `SELECT ... FOR UPDATE` em `coupons` | Reserva e cancelamento com cupom | `used_count` nunca passa de `max_uses` |
+| `SELECT ... FOR UPDATE` em `orders` | Pagamento e cancelamento | Impedir pagar e cancelar ao mesmo tempo |
+| `pg_advisory_xact_lock` | Reserva, por cliente + `Idempotency-Key` | Serializar repetições da mesma requisição |
+
+A ordem dos locks é a mesma em todas as operações (pedido ou evento, depois
+lotes por id, depois cupom), o que elimina deadlock entre elas. Detalhes em
+[Pedidos](pedidos.md#prevenção-de-deadlock-ordem-global-de-locks).
+
 ## Runtime e CLI
 
 Os dois usam `buildDataSourceOptions`, com uma diferença deliberada no
@@ -136,6 +208,20 @@ npm run migration:run
 
 # Para uma migration escrita à mão (dados, extensões, funções):
 npm run migration:create -- src/core/database/migrations/SeedVenues
+```
+
+| Comando | Descrição |
+| --- | --- |
+| `npm run migration:create -- src/core/database/migrations/<Nome>` | Cria uma migration vazia |
+| `npm run migration:generate -- src/core/database/migrations/<Nome>` | Gera a migration a partir da diferença entre entidades e banco |
+| `npm run migration:run` | Aplica as migrations pendentes |
+| `npm run migration:revert` | Desfaz a última migration aplicada |
+| `npm run migration:show` | Lista as migrations e o estado de cada uma |
+
+Para conferir se entidades e banco estão em sincronia (útil antes de abrir PR):
+
+```bash
+npm run build && npx typeorm migration:generate --check -d dist/core/database/data-source.js src/core/database/migrations/Check
 ```
 
 As migrations aplicadas ficam registradas na tabela `typeorm_migrations`. Cada

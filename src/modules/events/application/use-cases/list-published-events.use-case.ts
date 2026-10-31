@@ -16,7 +16,7 @@ export interface ListPublishedEventsQuery extends PageRequest {
 export class ListPublishedEventsUseCase {
   constructor(private readonly catalog: EventCatalog) {}
 
-  /** Sem `from`, lista só eventos futuros: o catálogo público é de próximos eventos. */
+  /** Sem `from`, só eventos futuros. */
   execute(query: ListPublishedEventsQuery): Promise<Page<EventSummaryView>> {
     return this.catalog.searchPublished({
       ...query,

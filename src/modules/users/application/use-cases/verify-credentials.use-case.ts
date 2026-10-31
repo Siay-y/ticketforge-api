@@ -20,12 +20,10 @@ export class VerifyCredentialsUseCase {
     private readonly hasher: PasswordHasher,
   ) {}
 
-  /** Devolve `null` para qualquer falha, sem distinguir e-mail inexistente de senha errada. */
   async execute(input: VerifyCredentialsInput): Promise<UserView | null> {
     const user = await this.findUser(input.email);
 
-    // Sem usuário, verifica contra um hash descartável: o tempo de resposta
-    // não pode revelar quais e-mails estão cadastrados.
+    // Hash descartável: o tempo de resposta não revela quais e-mails existem.
     const passwordHash = user?.passwordHash ?? (await this.getDecoyHash());
     const isValid = await this.hasher.verify(input.password, passwordHash);
 

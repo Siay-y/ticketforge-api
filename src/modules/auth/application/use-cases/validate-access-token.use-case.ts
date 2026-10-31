@@ -11,7 +11,7 @@ export class ValidateAccessTokenUseCase {
     private readonly sessions: SessionStore,
   ) {}
 
-  /** Assinatura válida não basta: a sessão precisa continuar ativa, o que torna o logout imediato. */
+  /** Exige sessão ativa além da assinatura: é o que torna o logout imediato. */
   async execute(accessToken: string): Promise<AuthenticatedUser> {
     const user = await this.tokens.verifyAccessToken(accessToken);
 

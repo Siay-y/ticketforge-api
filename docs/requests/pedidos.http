@@ -1,0 +1,427 @@
+# Guia de testes manuais de pedidos, cupons e checkout.
+# Requer a extensão REST Client (humao.rest-client) no VS Code: clique em
+# "Send Request" acima de cada bloco, na ordem. Respostas de um passo alimentam
+# os seguintes pelas variáveis {{nome.response...}}.
+#
+# Pré-requisito: npm run dev (sobe a infraestrutura, aplica as migrations e inicia a API).
+# Para recomeçar do zero, troque @run por outro número de DOIS dígitos (01 a 99):
+# ele entra nos e-mails e nas Idempotency-Key, que precisam ser UUID v4.
+#
+# A disputa simultânea pelos últimos ingressos não cabe num roteiro sequencial;
+# ela é provada pelo teste automatizado:
+#   npx vitest run --config ./vitest.config.e2e.ts test/orders.e2e-spec.ts -t "concorrência"
+
+@baseUrl = http://localhost:3000/api/v1
+@run = 01
+
+# Uma chave por intenção de compra. Repetir a mesma chave = repetir a mesma compra.
+@keyComCupom = 00000000-0000-4000-8000-0000000001{{run}}
+@keyUltimos = 00000000-0000-4000-8000-0000000002{{run}}
+@keyUmaVez = 00000000-0000-4000-8000-0000000003{{run}}
+@keyUmaVezOutro = 00000000-0000-4000-8000-0000000004{{run}}
+@keyVencido = 00000000-0000-4000-8000-0000000005{{run}}
+
+###############################################################################
+# 1. Contas (senhas aleatórias: não há credencial escrita neste arquivo)
+###############################################################################
+
+# @name registerOrganizer
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "org-pedidos{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###
+
+# @name registerBuyer
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "comprador{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###
+
+# @name registerOtherBuyer
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{ "email": "comprador-b{{run}}@ticketforge.dev", "password": "Tf#{{$guid}}A1" }
+
+###############################################################################
+# 2. Promova o organizador no terminal (troque 01 pelo valor de @run):
+#
+#   docker compose exec postgres psql -U ticketforge -d ticketforge -c "UPDATE users SET role = 'organizer' WHERE email = 'org-pedidos01@ticketforge.dev';"
+#
+# Depois, renove o token dele: o refresh relê o papel do banco.
+###############################################################################
+
+# @name refreshOrganizer
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{registerOrganizer.response.body.$.refreshToken}}" }
+
+###
+
+@organizerToken = {{refreshOrganizer.response.body.$.accessToken}}
+@buyerToken = {{registerBuyer.response.body.$.accessToken}}
+@otherBuyerToken = {{registerOtherBuyer.response.body.$.accessToken}}
+
+###############################################################################
+# 3. Evento à venda: três lotes, um deles com só 2 ingressos
+###############################################################################
+
+# Esperado: 201
+# @name createEvent
+POST {{baseUrl}}/events
+Authorization: Bearer {{organizerToken}}
+Content-Type: application/json
+
+{
+  "title": "Noite de Gala {{run}}",
+  "description": "Evento para o roteiro de pedidos.",
+  "venue": "Teatro Municipal, São Paulo - SP",
+  "eventDate": "{{$datetime iso8601 60 d}}",
+  "maxCapacity": 1000,
+  "initialBatches": [
+    { "name": "Pista", "unitPriceCents": 10000, "totalQuantity": 100, "salesStartDate": "{{$datetime iso8601 -1 h}}", "salesEndDate": "{{$datetime iso8601 30 d}}" },
+    { "name": "Camarote", "unitPriceCents": 5000, "totalQuantity": 20, "salesStartDate": "{{$datetime iso8601 -1 h}}", "salesEndDate": "{{$datetime iso8601 30 d}}" },
+    { "name": "Últimos", "unitPriceCents": 2000, "totalQuantity": 2, "salesStartDate": "{{$datetime iso8601 -1 h}}", "salesEndDate": "{{$datetime iso8601 30 d}}" }
+  ]
+}
+
+###
+
+@eventId = {{createEvent.response.body.$.id}}
+@eventSlug = {{createEvent.response.body.$.slug}}
+@pistaId = {{createEvent.response.body.$.batches[0].id}}
+@camaroteId = {{createEvent.response.body.$.batches[1].id}}
+@ultimosId = {{createEvent.response.body.$.batches[2].id}}
+
+###
+
+# Esperado: 200, status "published"
+POST {{baseUrl}}/events/{{eventId}}/publish
+Authorization: Bearer {{organizerToken}}
+
+###
+
+# Esperado: 200; o evento aparece entre os do organizador, em qualquer status
+GET {{baseUrl}}/events/me?status=published
+Authorization: Bearer {{organizerToken}}
+
+###############################################################################
+# 4. Cupons (convenção do discountValue: percentage em pontos-base, 1500 = 15%;
+#    fixed_cents em centavos, 5000 = R$ 50,00)
+###############################################################################
+
+# Esperado: 201, code gravado como "PCT15"
+POST {{baseUrl}}/events/{{eventId}}/coupons
+Authorization: Bearer {{organizerToken}}
+Content-Type: application/json
+
+{ "code": "pct15", "discountType": "percentage", "discountValue": 1500, "expiresAt": "{{$datetime iso8601 20 d}}" }
+
+###
+
+# Esperado: 201 (R$ 50,00, um único uso)
+POST {{baseUrl}}/events/{{eventId}}/coupons
+Authorization: Bearer {{organizerToken}}
+Content-Type: application/json
+
+{ "code": "UMAVEZ", "discountType": "fixed_cents", "discountValue": 5000, "maxUses": 1, "expiresAt": "{{$datetime iso8601 20 d}}" }
+
+###
+
+# Esperado: 409 COUPON_CODE_ALREADY_EXISTS (caixa não importa)
+POST {{baseUrl}}/events/{{eventId}}/coupons
+Authorization: Bearer {{organizerToken}}
+Content-Type: application/json
+
+{ "code": "Pct15", "discountType": "percentage", "discountValue": 500, "expiresAt": "{{$datetime iso8601 20 d}}" }
+
+###
+
+# Esperado: 403 (cliente não gerencia cupons)
+POST {{baseUrl}}/events/{{eventId}}/coupons
+Authorization: Bearer {{buyerToken}}
+Content-Type: application/json
+
+{ "code": "PIRATA", "discountType": "percentage", "discountValue": 10000, "expiresAt": "{{$datetime iso8601 20 d}}" }
+
+###
+
+# Esperado: 200 com os dois cupons e usedCount 0
+GET {{baseUrl}}/events/{{eventId}}/coupons
+Authorization: Bearer {{organizerToken}}
+
+###############################################################################
+# 5. Reserva com sucesso e idempotência
+###############################################################################
+
+# Esperado: 201, status "pending", subtotal 25000, desconto 3750, total 21250,
+# expiresAt 15 minutos à frente. 2 x R$ 100 + 1 x R$ 50 = R$ 250; 15% = R$ 37,50.
+# @name reserveWithCoupon
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyComCupom}}
+Content-Type: application/json
+
+{
+  "eventId": "{{eventId}}",
+  "items": [
+    { "batchId": "{{pistaId}}", "quantity": 2 },
+    { "batchId": "{{camaroteId}}", "quantity": 1 }
+  ],
+  "couponCode": "pct15"
+}
+
+###
+
+@orderWithCouponId = {{reserveWithCoupon.response.body.$.id}}
+
+###
+
+# Esperado: 200 (não 201), mesmo id do pedido acima e cabeçalho
+# Idempotent-Replayed: true. O estoque NÃO baixa de novo.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyComCupom}}
+Content-Type: application/json
+
+{
+  "eventId": "{{eventId}}",
+  "items": [
+    { "batchId": "{{pistaId}}", "quantity": 2 },
+    { "batchId": "{{camaroteId}}", "quantity": 1 }
+  ],
+  "couponCode": "pct15"
+}
+
+###
+
+# Esperado: 409 IDEMPOTENCY_KEY_REUSED (mesma chave, outro conteúdo)
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyComCupom}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{pistaId}}", "quantity": 5 }] }
+
+###
+
+# Esperado: 400 (Idempotency-Key ausente)
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{pistaId}}", "quantity": 1 }] }
+
+###
+
+# Esperado: 403 (organizador não compra; o comprador é sempre CUSTOMER)
+POST {{baseUrl}}/orders
+Authorization: Bearer {{organizerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{pistaId}}", "quantity": 1 }] }
+
+###############################################################################
+# 6. Estoque e limite por pedido
+###############################################################################
+
+# Esperado: 201 (leva os 2 únicos ingressos do lote "Últimos")
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyUltimos}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{ultimosId}}", "quantity": 2 }] }
+
+###
+
+# Esperado: 422 INSUFFICIENT_BATCH_STOCK ("restam 0 ingressos")
+POST {{baseUrl}}/orders
+Authorization: Bearer {{otherBuyerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{ultimosId}}", "quantity": 1 }] }
+
+###
+
+# Esperado: 422 INSUFFICIENT_BATCH_STOCK e NADA baixado: o item da Pista, que
+# tinha estoque, também é desfeito (rollback da transação inteira).
+POST {{baseUrl}}/orders
+Authorization: Bearer {{otherBuyerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "eventId": "{{eventId}}",
+  "items": [
+    { "batchId": "{{pistaId}}", "quantity": 1 },
+    { "batchId": "{{ultimosId}}", "quantity": 1 }
+  ]
+}
+
+###
+
+# Esperado: 422 ORDER_TICKET_LIMIT_EXCEEDED (11 ingressos; o máximo é 10)
+POST {{baseUrl}}/orders
+Authorization: Bearer {{otherBuyerToken}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "eventId": "{{eventId}}",
+  "items": [
+    { "batchId": "{{pistaId}}", "quantity": 6 },
+    { "batchId": "{{camaroteId}}", "quantity": 5 }
+  ]
+}
+
+###############################################################################
+# 7. Cupom esgotado e cancelamento devolvendo estoque
+###############################################################################
+
+# Esperado: 201, desconto de 5000 (único uso do UMAVEZ)
+# @name reserveUmaVez
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyUmaVez}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{camaroteId}}", "quantity": 2 }], "couponCode": "UMAVEZ" }
+
+###
+
+# Esperado: 422 COUPON_EXHAUSTED, sem baixar o estoque do Camarote
+POST {{baseUrl}}/orders
+Authorization: Bearer {{otherBuyerToken}}
+Idempotency-Key: {{keyUmaVezOutro}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{camaroteId}}", "quantity": 1 }], "couponCode": "UMAVEZ" }
+
+###
+
+# Anote availableQuantity do Camarote antes do cancelamento
+GET {{baseUrl}}/events/{{eventSlug}}
+
+###
+
+# Esperado: 403 ORDER_ACCESS_DENIED (o pedido é de outro cliente)
+POST {{baseUrl}}/orders/{{reserveUmaVez.response.body.$.id}}/cancel
+Authorization: Bearer {{otherBuyerToken}}
+
+###
+
+# Esperado: 200, status "cancelled". Na mesma transação: +2 no Camarote e o
+# uso do UMAVEZ volta (usedCount 0).
+POST {{baseUrl}}/orders/{{reserveUmaVez.response.body.$.id}}/cancel
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: availableQuantity do Camarote 2 a mais que na consulta anterior
+GET {{baseUrl}}/events/{{eventSlug}}
+
+###
+
+# Esperado: 201 agora (o cupom voltou a ter um uso livre). A chave é a mesma
+# da tentativa recusada: ela não gerou pedido, então não há o que repetir.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{otherBuyerToken}}
+Idempotency-Key: {{keyUmaVezOutro}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{camaroteId}}", "quantity": 1 }], "couponCode": "UMAVEZ" }
+
+###
+
+# Esperado: 422 INVALID_ORDER_STATUS (já cancelado)
+POST {{baseUrl}}/orders/{{reserveUmaVez.response.body.$.id}}/cancel
+Authorization: Bearer {{buyerToken}}
+
+###############################################################################
+# 8. Pagamento
+###############################################################################
+
+# Esperado: 403 (só o comprador paga o próprio pedido)
+POST {{baseUrl}}/orders/{{orderWithCouponId}}/pay
+Authorization: Bearer {{otherBuyerToken}}
+
+###
+
+# Esperado: 200, status "paid" e paidAt preenchido
+POST {{baseUrl}}/orders/{{orderWithCouponId}}/pay
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 422 INVALID_ORDER_STATUS (já pago)
+POST {{baseUrl}}/orders/{{orderWithCouponId}}/pay
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 422 INVALID_ORDER_STATUS (pedido pago não é cancelado)
+POST {{baseUrl}}/orders/{{orderWithCouponId}}/cancel
+Authorization: Bearer {{buyerToken}}
+
+###############################################################################
+# 9. Prazo de pagamento expirado
+###############################################################################
+
+# Esperado: 201
+# @name reserveToExpire
+POST {{baseUrl}}/orders
+Authorization: Bearer {{buyerToken}}
+Idempotency-Key: {{keyVencido}}
+Content-Type: application/json
+
+{ "eventId": "{{eventId}}", "items": [{ "batchId": "{{pistaId}}", "quantity": 1 }] }
+
+###############################################################################
+# Simule os 15 minutos passando (troque <orderId> pelo id da resposta acima):
+#
+#   docker compose exec postgres psql -U ticketforge -d ticketforge -c "UPDATE orders SET expires_at = now() - interval '1 minute' WHERE id = '<orderId>';"
+###############################################################################
+
+# Esperado: 422 ORDER_EXPIRED; o pedido continua "pending"
+POST {{baseUrl}}/orders/{{reserveToExpire.response.body.$.id}}/pay
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 200 "cancelled": cancelar um pendente vencido devolve o estoque preso
+POST {{baseUrl}}/orders/{{reserveToExpire.response.body.$.id}}/cancel
+Authorization: Bearer {{buyerToken}}
+
+###############################################################################
+# 10. Consultas
+###############################################################################
+
+# Esperado: 200 com data[] e meta, mais recentes primeiro
+GET {{baseUrl}}/orders/me?page=1&limit=10
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 200 só com pedidos pagos
+GET {{baseUrl}}/orders/me?status=paid
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 200 (dono)
+GET {{baseUrl}}/orders/{{orderWithCouponId}}
+Authorization: Bearer {{buyerToken}}
+
+###
+
+# Esperado: 403 ORDER_ACCESS_DENIED
+GET {{baseUrl}}/orders/{{orderWithCouponId}}
+Authorization: Bearer {{otherBuyerToken}}

@@ -5,7 +5,6 @@ import type { UserRole } from '../../../../users/domain/value-objects/user-role.
 
 export const ROLES_KEY = 'auth:roles';
 
-/** Restringe a rota aos papéis informados. Exige ao menos um papel. */
 export const Roles = (...roles: [UserRole, ...UserRole[]]) =>
   applyDecorators(
     SetMetadata(ROLES_KEY, roles),

@@ -1,7 +1,4 @@
-/**
- * Categoria semântica do erro. A tradução para status HTTP é feita na apresentação.
- * `validation` é dado malformado; `business_rule` é dado bem formado que viola uma regra.
- */
+/** `validation`: dado malformado (400). `business_rule`: dado válido que viola regra (422). */
 export type DomainErrorKind =
   | 'validation'
   | 'business_rule'
@@ -12,7 +9,7 @@ export type DomainErrorKind =
 
 export abstract class DomainError extends Error {
   abstract readonly kind: DomainErrorKind;
-  /** Código estável para o cliente, independente do texto da mensagem. */
+  /** Estável para o cliente, ao contrário da mensagem. */
   abstract readonly code: string;
 
   constructor(message: string) {

@@ -12,7 +12,7 @@ import { EventRepository } from '../src/modules/events/domain/repositories/event
 // Requer `npm run infra:up` e `npm run migration:run`.
 
 const RUN_ID = crypto.randomUUID().slice(0, 8);
-// Gerada em tempo de execução: nenhuma credencial fica escrita no repositório.
+// Gerada na execução: nenhuma credencial fica no repositório.
 const PASSWORD = `Tf#${crypto.randomUUID()}A1`;
 
 const inDays = (days: number): string =>
@@ -395,7 +395,7 @@ describe('Eventos e lotes (e2e)', () => {
       } = await createEvent(owner, {
         initialBatches: [batchBody({ totalQuantity: 100 })],
       }));
-      // Simula 30 vendas: o módulo de pedidos ainda não existe.
+      // Simula 30 vendas direto no banco.
       await dataSource.query(
         'UPDATE ticket_batches SET available_quantity = 70 WHERE id = $1',
         [batchId],

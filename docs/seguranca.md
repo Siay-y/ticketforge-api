@@ -43,6 +43,38 @@ Evento inexistente responde `404` antes da checagem de dono. Isso revela a
 organizadores autenticados que um id existe, o que é aceitável: os ids são UUID
 aleatórios e eventos publicados já são públicos.
 
+Os cupons seguem a mesma política do evento: só o dono ou um admin cria e lista.
+
+Nos pedidos:
+
+| Ação | Quem pode |
+| --- | --- |
+| Comprar | Só `customer` (`@Roles()` e a política do caso de uso) |
+| Consultar e cancelar | O comprador ou um `admin` |
+| Pagar | Só o comprador; nem um admin confirma pagamento por ele |
+
+O `customerId` do pedido vem sempre do token, e preço, desconto e total são
+calculados no servidor a partir do lote e do cupom travados. O corpo da
+requisição só informa quais lotes e quantos ingressos: o cliente não consegue
+mandar o próprio preço.
+
+## Vendas sob concorrência e abuso
+
+- **Sem venda acima do estoque.** Lock de linha nos lotes durante a reserva,
+  `CHECK available_quantity >= 0` no banco e teste e2e com 5 compradores
+  simultâneos pelos 2 últimos ingressos.
+- **Sem cupom usado além do limite.** O cupom é travado na reserva e o `CHECK
+  used_count <= max_uses` repete a regra no banco.
+- **Idempotência obrigatória.** `POST /orders` exige `Idempotency-Key`: duplo
+  clique, timeout e retry não criam pedidos nem reservas duplicadas. Reusar a
+  chave com outro conteúdo devolve `409`.
+- **Limite anti-cambista.** No máximo 10 ingressos por pedido, checado antes de
+  travar qualquer lote.
+- **Reserva com prazo.** O pedido pendente segura o estoque por 15 minutos;
+  depois disso não pode mais ser pago.
+- **Sem deadlock.** Todas as operações travam recursos na mesma ordem (pedido ou
+  evento, lotes por id, cupom).
+
 ## Configuração
 
 - **Fail fast.** O schema Zod roda antes de qualquer módulo. Variável ausente ou
@@ -126,6 +158,9 @@ Itens planejados para os próximos PRs:
 
 - Rate limiting (`@nestjs/throttler` com storage em Redis), essencial na abertura
   de vendas e contra força bruta em `/auth/login` e enumeração em `/auth/register`.
+- Limite de pedidos por cliente e por evento, além do teto por pedido: hoje um
+  cambista com várias contas ou vários pedidos ainda contorna os 10 ingressos.
+- Liberação automática das reservas vencidas (job agendado na Sessão 5).
 - Bloqueio temporário de conta após tentativas de login seguidas.
 - Endpoint de gestão de papéis e revogação de todas as sessões de um usuário.
 - Confirmação de e-mail e recuperação de senha.

@@ -9,10 +9,7 @@ export interface IsAfterPropertyOptions extends ValidationOptions {
   allowEqual?: boolean;
 }
 
-/**
- * Exige que a data seja posterior à de outra propriedade do mesmo DTO.
- * Se alguma das duas faltar, não valida: em PATCH parcial, a regra fica com o domínio.
- */
+/** Se alguma das datas faltar, não valida: em PATCH parcial, a regra fica com o domínio. */
 export function IsAfterProperty(
   property: string,
   { allowEqual = false, ...options }: IsAfterPropertyOptions = {},
@@ -42,7 +39,6 @@ export function IsAfterProperty(
   };
 }
 
-/** Exige data no futuro. Valores que não são `Date` ficam a cargo de `@IsDate()`. */
 export function IsFutureDate(
   options: ValidationOptions = {},
 ): PropertyDecorator {

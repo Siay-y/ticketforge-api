@@ -1,6 +1,5 @@
 import { DomainError } from '../../../../shared/domain/errors/domain-error.js';
 
-/** Datas incoerentes: evento no passado ou período de vendas fora da ordem. */
 export class InvalidEventScheduleError extends DomainError {
   readonly kind = 'business_rule';
   readonly code = 'INVALID_EVENT_SCHEDULE';

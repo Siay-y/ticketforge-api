@@ -30,7 +30,7 @@ export function buildDataSourceOptions(env: DatabaseEnv): DataSourceOptions {
     poolSize: env.DATABASE_POOL_MAX,
     connectTimeoutMS: 5_000,
     extra: {
-      // Encerra consultas longas e transações esquecidas abertas, que seguram locks de linha.
+      // Libera locks presos por queries longas ou transações esquecidas abertas.
       statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
       idle_in_transaction_session_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS,
     },

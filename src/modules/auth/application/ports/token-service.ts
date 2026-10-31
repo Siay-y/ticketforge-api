@@ -3,7 +3,7 @@ import type { AuthenticatedUser } from '../dtos/authenticated-user.js';
 export interface RefreshTokenClaims {
   userId: string;
   sessionId: string;
-  /** Identificador único deste refresh token (jti), trocado a cada rotação. */
+  /** jti, trocado a cada rotação. */
   tokenId: string;
 }
 
@@ -18,9 +18,9 @@ export abstract class TokenService {
 
   abstract signRefreshToken(claims: RefreshTokenClaims): Promise<string>;
 
-  /** Lança `InvalidTokenError` para qualquer token que não seja um access token válido. */
+  /** Lança `InvalidTokenError` se inválido. */
   abstract verifyAccessToken(token: string): Promise<AuthenticatedUser>;
 
-  /** Lança `InvalidTokenError` para qualquer token que não seja um refresh token válido. */
+  /** Lança `InvalidTokenError` se inválido. */
   abstract verifyRefreshToken(token: string): Promise<RefreshTokenClaims>;
 }

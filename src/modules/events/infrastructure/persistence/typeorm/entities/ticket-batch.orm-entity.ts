@@ -11,7 +11,7 @@ import {
 import { EventOrmEntity } from './event.orm-entity.js';
 
 @Entity({ name: 'ticket_batches' })
-// As mesmas regras do domínio, repetidas no banco: nenhum caminho de escrita as contorna.
+// Regras do domínio repetidas no banco.
 @Check('CHK_ticket_batches_total_quantity_positive', '"total_quantity" > 0')
 @Check(
   'CHK_ticket_batches_available_quantity_range',
@@ -58,7 +58,6 @@ export class TicketBatchOrmEntity {
   @Column({ name: 'sales_end_date', type: 'timestamptz' })
   salesEndDate: Date;
 
-  // Incrementada a cada UPDATE: a venda (próximo PR) usará para detectar escrita concorrente.
   @VersionColumn()
   version: number;
 

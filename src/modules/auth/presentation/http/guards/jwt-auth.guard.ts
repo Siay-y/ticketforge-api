@@ -9,7 +9,6 @@ import { InvalidTokenError } from '../../../application/errors/invalid-token.err
 import { ValidateAccessTokenUseCase } from '../../../application/use-cases/validate-access-token.use-case.js';
 import type { AuthenticatedRequest } from '../authenticated-request.js';
 
-/** Guard global: toda rota exige access token, salvo as marcadas com @Public(). */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(

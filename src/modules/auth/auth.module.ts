@@ -17,7 +17,7 @@ import { JwtAuthGuard } from './presentation/http/guards/jwt-auth.guard.js';
 import { RolesGuard } from './presentation/http/guards/roles.guard.js';
 
 @Module({
-  // Segredo e validade são passados a cada assinatura pelo JwtTokenService.
+  // Segredo e validade vão em cada assinatura.
   imports: [UsersModule, JwtModule.register({})],
   controllers: [AuthController],
   providers: [
@@ -29,7 +29,7 @@ import { RolesGuard } from './presentation/http/guards/roles.guard.js';
     RefreshTokenUseCase,
     LogoutUseCase,
     ValidateAccessTokenUseCase,
-    // A ordem importa: autenticação antes de autorização.
+    // Ordem importa: autenticação antes de autorização.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

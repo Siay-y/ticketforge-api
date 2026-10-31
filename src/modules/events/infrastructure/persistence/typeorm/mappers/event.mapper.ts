@@ -4,10 +4,41 @@ import { Slug } from '../../../../domain/value-objects/slug.js';
 import type { EventOrmEntity } from '../entities/event.orm-entity.js';
 import type { TicketBatchOrmEntity } from '../entities/ticket-batch.orm-entity.js';
 
-// Objetos literais, não instâncias: só as colunas entram no INSERT/UPDATE,
-// sem as relações (`organizer`, `event`) nem a `version`, que é do banco.
+// Literais: só colunas entram no INSERT/UPDATE, sem relações nem `version`.
 export type EventRow = Omit<EventOrmEntity, 'organizer'>;
 export type TicketBatchRow = Omit<TicketBatchOrmEntity, 'event' | 'version'>;
+
+export const TicketBatchMapper = {
+  toDomain(row: TicketBatchOrmEntity): TicketBatch {
+    return TicketBatch.restore({
+      id: row.id,
+      eventId: row.eventId,
+      name: row.name,
+      unitPriceCents: row.unitPriceCents,
+      totalQuantity: row.totalQuantity,
+      availableQuantity: row.availableQuantity,
+      salesStartDate: row.salesStartDate,
+      salesEndDate: row.salesEndDate,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    });
+  },
+
+  toRow(batch: TicketBatch): TicketBatchRow {
+    return {
+      id: batch.id,
+      eventId: batch.eventId,
+      name: batch.name,
+      unitPriceCents: batch.unitPriceCents,
+      totalQuantity: batch.totalQuantity,
+      availableQuantity: batch.availableQuantity,
+      salesStartDate: batch.salesStartDate,
+      salesEndDate: batch.salesEndDate,
+      createdAt: batch.createdAt,
+      updatedAt: batch.updatedAt,
+    };
+  },
+};
 
 export const EventMapper = {
   toDomain(row: EventOrmEntity, batchRows: TicketBatchOrmEntity[]): Event {
@@ -21,20 +52,7 @@ export const EventMapper = {
       eventDate: row.eventDate,
       maxCapacity: row.maxCapacity,
       status: row.status,
-      batches: batchRows.map((batch) =>
-        TicketBatch.restore({
-          id: batch.id,
-          eventId: batch.eventId,
-          name: batch.name,
-          unitPriceCents: batch.unitPriceCents,
-          totalQuantity: batch.totalQuantity,
-          availableQuantity: batch.availableQuantity,
-          salesStartDate: batch.salesStartDate,
-          salesEndDate: batch.salesEndDate,
-          createdAt: batch.createdAt,
-          updatedAt: batch.updatedAt,
-        }),
-      ),
+      batches: batchRows.map((batch) => TicketBatchMapper.toDomain(batch)),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
@@ -59,17 +77,6 @@ export const EventMapper = {
   },
 
   toBatchRows(event: Event): TicketBatchRow[] {
-    return event.batches.map((batch) => ({
-      id: batch.id,
-      eventId: batch.eventId,
-      name: batch.name,
-      unitPriceCents: batch.unitPriceCents,
-      totalQuantity: batch.totalQuantity,
-      availableQuantity: batch.availableQuantity,
-      salesStartDate: batch.salesStartDate,
-      salesEndDate: batch.salesEndDate,
-      createdAt: batch.createdAt,
-      updatedAt: batch.updatedAt,
-    }));
+    return event.batches.map((batch) => TicketBatchMapper.toRow(batch));
   },
 };

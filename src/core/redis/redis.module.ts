@@ -27,20 +27,18 @@ const logger = new Logger('Redis');
           db: config.REDIS_DB,
           connectionName: 'ticket-forge-api',
           lazyConnect: true,
-          // Sem fila offline: com o Redis fora, o comando falha na hora em vez de
-          // segurar a requisição. A checagem de sessão depende disso para falhar fechada.
+          // Sem fila offline: com o Redis fora, o comando falha na hora (fail-closed).
           enableOfflineQueue: false,
           maxRetriesPerRequest: 1,
           connectTimeout: 5_000,
           commandTimeout: 2_000,
         });
 
-        // Sem listener, o ioredis despeja cada falha de reconexão como "Unhandled error event".
+        // Sem listener, o ioredis registra cada falha como "Unhandled error event".
         client.on('error', (error: NodeJS.ErrnoException) =>
           logger.error(error.code ?? error.message),
         );
 
-        // Conecta no boot: Redis indisponível impede a API de subir.
         await client.connect();
 
         return client;

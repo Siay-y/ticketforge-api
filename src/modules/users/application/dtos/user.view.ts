@@ -1,7 +1,7 @@
 import type { User } from '../../domain/entities/user.js';
 import type { UserRole } from '../../domain/value-objects/user-role.js';
 
-/** Leitura de usuário exposta para fora do módulo, sem o hash da senha. */
+/** Sem o hash da senha. */
 export interface UserView {
   id: string;
   email: string;

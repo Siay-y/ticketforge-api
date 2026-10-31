@@ -10,8 +10,7 @@ import type {
 
 const sessionKey = (sessionId: string): string => `auth:session:${sessionId}`;
 
-// Compare-and-swap atômico: entre ler e trocar o token ativo nenhuma outra
-// requisição executa. Token divergente significa reuso e encerra a sessão.
+// Compare-and-swap atômico; token divergente indica reuso e revoga a sessão.
 const ROTATE_SCRIPT = `
 local current = redis.call('HGET', KEYS[1], 'tokenId')
 if not current then

@@ -4,10 +4,7 @@ const SUFFIX_LENGTH = 8;
 export class Slug {
   private constructor(readonly value: string) {}
 
-  /**
-   * Deriva do título e acrescenta um sufixo único: dois eventos homônimos nunca
-   * colidem e o slug não muda se o título for editado depois.
-   */
+  /** Sufixo único: homônimos não colidem, e editar o título não muda o slug. */
   static fromTitle(title: string, uniqueSuffix: string): Slug {
     const base = title
       .normalize('NFD')

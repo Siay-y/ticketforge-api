@@ -3,7 +3,7 @@ import { TicketBatch } from '../domain/entities/ticket-batch.js';
 import { EventNotFoundError } from '../domain/errors/event-not-found.error.js';
 import type { EventRepository } from '../domain/repositories/event.repository.js';
 
-/** Guarda cópias: se `change` lançar, nada é gravado, como no rollback da transação. */
+/** Guarda cópias: erro em `change` não grava nada, como um rollback. */
 export class InMemoryEventRepository implements EventRepository {
   private readonly events = new Map<string, Event>();
 
@@ -11,6 +11,12 @@ export class InMemoryEventRepository implements EventRepository {
     this.events.set(event.id, clone(event));
 
     return Promise.resolve();
+  }
+
+  findById(eventId: string): Promise<Event | null> {
+    const stored = this.events.get(eventId);
+
+    return Promise.resolve(stored && !stored.deletedAt ? clone(stored) : null);
   }
 
   async update<T>(eventId: string, change: (event: Event) => T): Promise<T> {

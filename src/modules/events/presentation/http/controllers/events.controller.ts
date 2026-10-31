@@ -30,6 +30,7 @@ import { CancelEventUseCase } from '../../../application/use-cases/cancel-event.
 import { CreateEventUseCase } from '../../../application/use-cases/create-event.use-case.js';
 import { DeleteEventUseCase } from '../../../application/use-cases/delete-event.use-case.js';
 import { GetPublishedEventUseCase } from '../../../application/use-cases/get-published-event.use-case.js';
+import { ListMyEventsUseCase } from '../../../application/use-cases/list-my-events.use-case.js';
 import { ListPublishedEventsUseCase } from '../../../application/use-cases/list-published-events.use-case.js';
 import { PublishEventUseCase } from '../../../application/use-cases/publish-event.use-case.js';
 import { UpdateEventUseCase } from '../../../application/use-cases/update-event.use-case.js';
@@ -45,6 +46,7 @@ import {
   UpdateEventRequest,
 } from '../dtos/event.request.js';
 import { ListEventsQuery } from '../dtos/list-events.query.js';
+import { ListMyEventsQuery } from '../dtos/list-my-events.query.js';
 import {
   CreateTicketBatchRequest,
   UpdateTicketBatchRequest,
@@ -65,6 +67,7 @@ export class EventsController {
     private readonly deleteEvent: DeleteEventUseCase,
     private readonly addBatch: AddTicketBatchUseCase,
     private readonly updateBatch: UpdateTicketBatchUseCase,
+    private readonly listMyEvents: ListMyEventsUseCase,
   ) {}
 
   @Public()
@@ -81,6 +84,22 @@ export class EventsController {
   })
   async list(@Query() query: ListEventsQuery): Promise<EventPageResponse> {
     return EventPageResponse.from(await this.listPublished.execute(query));
+  }
+
+  // Antes de ':slug': o Nest casa rotas na ordem declarada.
+  @Get('me')
+  @ApiManageEvent({ withEvent: false })
+  @ApiOperation({
+    summary: 'Eventos do organizador autenticado, em qualquer status',
+    description:
+      'Inclui rascunhos e cancelados; removidos ficam de fora. Mais recentes primeiro.',
+  })
+  @ApiOkResponse({ type: EventPageResponse })
+  async listMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListMyEventsQuery,
+  ): Promise<EventPageResponse> {
+    return EventPageResponse.from(await this.listMyEvents.execute(user, query));
   }
 
   @Public()

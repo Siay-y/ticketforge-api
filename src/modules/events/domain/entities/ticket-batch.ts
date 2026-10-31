@@ -1,8 +1,10 @@
+import { InsufficientBatchStockError } from '../errors/insufficient-batch-stock.error.js';
 import { InvalidEventDataError } from '../errors/invalid-event-data.error.js';
 import { InvalidEventScheduleError } from '../errors/invalid-event-schedule.error.js';
 import { TicketBatchQuantityBelowSoldError } from '../errors/ticket-batch-quantity-below-sold.error.js';
+import { TicketBatchSalesClosedError } from '../errors/ticket-batch-sales-closed.error.js';
 
-// R$ 1.000.000,00: folga ampla para ingressos e bem abaixo do teto de `integer` no banco.
+// R$ 1.000.000,00, bem abaixo do teto de `integer`.
 export const MAX_UNIT_PRICE_CENTS = 100_000_000;
 export const MAX_BATCH_NAME_LENGTH = 100;
 
@@ -10,7 +12,6 @@ export interface TicketBatchProps {
   id: string;
   eventId: string;
   name: string;
-  /** Preço em centavos: inteiro exato, sem erro de ponto flutuante. */
   unitPriceCents: number;
   totalQuantity: number;
   availableQuantity: number;
@@ -102,7 +103,7 @@ export class TicketBatch {
     return this.props.updatedAt;
   }
 
-  /** O que já foi vendido é preservado: só a parte disponível acompanha a nova quantidade. */
+  /** Preserva o vendido: só o disponível acompanha o novo total. */
   update(changes: TicketBatchChanges, now: Date): void {
     const totalQuantity = changes.totalQuantity ?? this.props.totalQuantity;
     const sold = this.soldQuantity;
@@ -124,6 +125,49 @@ export class TicketBatch {
 
     TicketBatch.validate(next);
     this.props = next;
+  }
+
+  /** Inclusivo nas duas pontas. */
+  isOnSale(now: Date): boolean {
+    return now >= this.props.salesStartDate && now <= this.props.salesEndDate;
+  }
+
+  reserve(quantity: number, now: Date): void {
+    assertPositiveQuantity(quantity);
+
+    if (!this.isOnSale(now)) {
+      throw new TicketBatchSalesClosedError(this.props.name);
+    }
+
+    if (quantity > this.props.availableQuantity) {
+      throw new InsufficientBatchStockError(
+        this.props.name,
+        this.props.availableQuantity,
+      );
+    }
+
+    this.props = {
+      ...this.props,
+      availableQuantity: this.props.availableQuantity - quantity,
+      updatedAt: now,
+    };
+  }
+
+  release(quantity: number, now: Date): void {
+    assertPositiveQuantity(quantity);
+
+    // Invariante: o reservado sempre conta como vendido.
+    if (this.props.availableQuantity + quantity > this.props.totalQuantity) {
+      throw new Error(
+        `Devolução de ${quantity} ingressos excede o total do lote ${this.props.id}`,
+      );
+    }
+
+    this.props = {
+      ...this.props,
+      availableQuantity: this.props.availableQuantity + quantity,
+      updatedAt: now,
+    };
   }
 
   private static validate(props: TicketBatchProps): void {
@@ -164,5 +208,13 @@ export class TicketBatch {
         'O início das vendas deve ser anterior ao fim das vendas',
       );
     }
+  }
+}
+
+function assertPositiveQuantity(quantity: number): void {
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new InvalidEventDataError(
+      'A quantidade deve ser um inteiro positivo',
+    );
   }
 }

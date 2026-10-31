@@ -20,7 +20,7 @@ export class User {
     User.assertPasswordHash(props.passwordHash);
   }
 
-  /** Todo cadastro nasce como CUSTOMER; papéis elevados são concedidos por um administrador. */
+  /** Todo cadastro nasce CUSTOMER. */
   static register(input: RegisterUserProps, now: Date = new Date()): User {
     return new User({
       id: crypto.randomUUID(),
@@ -32,7 +32,6 @@ export class User {
     });
   }
 
-  /** Reconstrói um usuário já persistido, sem aplicar regras de cadastro. */
   static restore(props: UserProps): User {
     return new User({ ...props });
   }

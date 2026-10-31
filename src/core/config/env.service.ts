@@ -11,7 +11,6 @@ export class EnvService {
     return this.config.get(key, { infer: true });
   }
 
-  /** Extrai o recorte de variáveis descrito por um dos schemas de `env.schema.ts`. */
   pick<S extends z.ZodObject>(schema: S): z.output<S> {
     const entries = Object.keys(schema.shape).map((key) => [
       key,

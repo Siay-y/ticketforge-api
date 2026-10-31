@@ -13,7 +13,6 @@ import { EventStatus } from '../../../../domain/value-objects/event-status.js';
 export const EVENTS_SLUG_UNIQUE_INDEX = 'UQ_events_slug';
 
 @Entity({ name: 'events' })
-// Atende a listagem pública (status + intervalo de datas) ignorando removidos.
 @Index('IDX_events_status_event_date', ['status', 'eventDate'], {
   where: '"deleted_at" IS NULL',
 })
@@ -26,7 +25,7 @@ export class EventOrmEntity {
   @Column({ name: 'organizer_id', type: 'uuid' })
   organizerId: string;
 
-  // Referência por nome: cria a FK sem importar a infraestrutura do módulo users.
+  // Por nome: FK sem importar a infraestrutura de users.
   @ManyToOne('UserOrmEntity', { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({
     name: 'organizer_id',
@@ -34,7 +33,7 @@ export class EventOrmEntity {
   })
   organizer?: unknown;
 
-  // Índice GIN trigram criado à mão na migration; synchronize: false evita que o TypeORM o descarte.
+  // GIN trigram criado na migration; synchronize: false impede o descarte.
   @Index('IDX_events_title_trgm', { synchronize: false })
   @Column({ type: 'varchar', length: 160 })
   title: string;
