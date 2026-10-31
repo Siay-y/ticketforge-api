@@ -11,17 +11,13 @@ export interface RotateSessionInput {
   nextTokenId: string;
 }
 
-/**
- * - `rotated`: o token apresentado era o ativo e foi substituído.
- * - `reused`: o token já tinha sido trocado; a sessão foi revogada.
- * - `not_found`: sessão expirada ou revogada.
- */
+/** `reused`: token já trocado, sessão revogada. `not_found`: expirada ou revogada. */
 export type RotationResult = 'rotated' | 'reused' | 'not_found';
 
 export abstract class SessionStore {
   abstract create(session: Session, ttlSeconds: number): Promise<void>;
 
-  /** Compara e troca o token ativo atomicamente, renovando o TTL da sessão. */
+  /** Deve ser atômico: compara, troca o token ativo e renova o TTL. */
   abstract rotate(
     input: RotateSessionInput,
     ttlSeconds: number,

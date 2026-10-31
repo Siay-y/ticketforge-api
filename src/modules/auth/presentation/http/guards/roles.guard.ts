@@ -9,7 +9,6 @@ import type { UserRole } from '../../../../users/domain/value-objects/user-role.
 import type { AuthenticatedRequest } from '../authenticated-request.js';
 import { ROLES_KEY } from '../decorators/roles.decorator.js';
 
-/** Roda depois do JwtAuthGuard. Sem @Roles(), qualquer usuário autenticado passa. */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -26,7 +25,7 @@ export class RolesGuard implements CanActivate {
 
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
-    // Sem usuário (rota @Public com @Roles) também nega: na dúvida, fecha.
+    // Sem usuário também nega (fail-closed).
     if (!user || !roles.includes(user.role)) {
       throw new ForbiddenException('Permissão insuficiente para este recurso');
     }

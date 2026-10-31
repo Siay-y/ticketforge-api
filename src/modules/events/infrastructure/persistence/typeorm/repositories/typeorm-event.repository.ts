@@ -24,10 +24,25 @@ export class TypeOrmEventRepository implements EventRepository {
     });
   }
 
+  async findById(eventId: string): Promise<Event | null> {
+    const eventRow = await this.dataSource.manager.findOneBy(EventOrmEntity, {
+      id: eventId,
+    });
+
+    if (!eventRow) {
+      return null;
+    }
+
+    const batchRows = await this.dataSource.manager.find(TicketBatchOrmEntity, {
+      where: { eventId },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+
+    return EventMapper.toDomain(eventRow, batchRows);
+  }
+
   update<T>(eventId: string, change: (event: Event) => T): Promise<T> {
     return this.dataSource.transaction(async (manager) => {
-      // SELECT ... FOR UPDATE no evento e nos lotes: alterações concorrentes no
-      // mesmo evento esperam a vez, e a soma de capacidade nunca é lida obsoleta.
       const eventRow = await manager.findOne(EventOrmEntity, {
         where: { id: eventId },
         lock: { mode: 'pessimistic_write' },
@@ -37,13 +52,14 @@ export class TypeOrmEventRepository implements EventRepository {
         throw new EventNotFoundError();
       }
 
+      // Ordem de id, a mesma da venda: evita deadlock.
       const batchRows = await manager.find(TicketBatchOrmEntity, {
         where: { eventId },
-        order: { createdAt: 'ASC', id: 'ASC' },
+        order: { id: 'ASC' },
         lock: { mode: 'pessimistic_write' },
       });
 
-      const event = EventMapper.toDomain(eventRow, batchRows);
+      const event = EventMapper.toDomain(eventRow, byCreation(batchRows));
       const result = change(event);
 
       await this.persist(manager, event, batchRows);
@@ -75,7 +91,7 @@ export class TypeOrmEventRepository implements EventRepository {
           ...changes
         } = row;
 
-        // O TypeORM acrescenta `version = version + 1` sozinho neste UPDATE.
+        // O TypeORM incrementa `version` sozinho.
         await manager.update(TicketBatchOrmEntity, { id: batchId }, changes);
       }
     }
@@ -95,3 +111,9 @@ function hasChanged(
     before.salesEndDate.getTime() !== after.salesEndDate.getTime()
   );
 }
+
+const byCreation = (rows: TicketBatchOrmEntity[]): TicketBatchOrmEntity[] =>
+  [...rows].sort(
+    (a, b) =>
+      a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
+  );

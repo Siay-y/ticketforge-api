@@ -4,7 +4,7 @@ import { UserRole } from '../../../../domain/value-objects/user-role.js';
 export const USERS_EMAIL_UNIQUE_INDEX = 'UQ_users_email';
 
 @Entity({ name: 'users' })
-// Defesa em profundidade: o índice único só impede duplicatas se o e-mail já chegar normalizado.
+// O índice único só impede duplicatas se o e-mail chegar normalizado.
 @Check('CHK_users_email_lowercase', '"email" = lower("email")')
 export class UserOrmEntity {
   @PrimaryColumn({ type: 'uuid', primaryKeyConstraintName: 'PK_users' })

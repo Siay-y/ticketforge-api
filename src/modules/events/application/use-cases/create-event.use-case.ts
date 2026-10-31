@@ -25,8 +25,6 @@ export class CreateEventUseCase {
   ): Promise<EventDetailsView> {
     assertCanCreateEvents(actor);
 
-    // Todas as regras (inclusive a capacidade dos lotes iniciais) rodam antes
-    // de qualquer escrita; a transação garante que a gravação seja atômica.
     const event = Event.create(
       { ...command, organizerId: actor.userId },
       new Date(),

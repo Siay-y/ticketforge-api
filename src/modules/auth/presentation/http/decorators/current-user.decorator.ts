@@ -10,7 +10,7 @@ export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthenticatedUser => {
     const { user } = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
-    // Só acontece se a rota for @Public: erro de programação, não do cliente.
+    // Só ocorre em rota @Public: erro de programação.
     if (!user) {
       throw new InternalServerErrorException(
         '@CurrentUser() usado em rota sem autenticação',

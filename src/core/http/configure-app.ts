@@ -4,6 +4,10 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import helmet from 'helmet';
+import {
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENT_REPLAY_HEADER,
+} from '../../shared/presentation/http/decorators/idempotency-key.decorator.js';
 
 export interface HttpOptions {
   apiPrefix: string;
@@ -20,7 +24,9 @@ export function configureApp(
     origin: options.corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    allowedHeaders: ['Authorization', 'Content-Type', IDEMPOTENCY_KEY_HEADER],
+    // Deixa o JavaScript do navegador ler o aviso de resposta repetida.
+    exposedHeaders: [IDEMPOTENT_REPLAY_HEADER],
     maxAge: 600,
   });
 

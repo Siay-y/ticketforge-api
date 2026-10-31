@@ -11,10 +11,7 @@ import { ErrorResponse } from '../../../../../shared/presentation/http/error.res
 import { UserRole } from '../../../../users/domain/value-objects/user-role.js';
 import { Roles } from '../../../../auth/presentation/http/decorators/roles.decorator.js';
 
-/**
- * Restringe a ADMIN e ORGANIZER e documenta as respostas comuns às rotas de gestão.
- * O 403 também cobre organizador tentando alterar evento de outro (ownership).
- */
+/** @Roles(ORGANIZER, ADMIN) e as respostas comuns de gestão no Swagger. */
 export const ApiManageEvent = ({ withEvent = true } = {}) =>
   applyDecorators(
     Roles(UserRole.ORGANIZER, UserRole.ADMIN),

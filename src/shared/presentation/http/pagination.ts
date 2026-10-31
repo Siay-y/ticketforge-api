@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { IsInt, Max, Min } from 'class-validator';
 import type { Page } from '../../application/pagination.js';
 
-// Teto de página: offsets muito profundos obrigam o banco a percorrer e descartar linhas.
+// Offsets profundos obrigam o banco a percorrer e descartar linhas.
 const MAX_PAGE = 10_000;
 const MAX_LIMIT = 100;
 

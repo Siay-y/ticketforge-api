@@ -13,6 +13,7 @@ import {
 } from '../../../../application/dtos/event.views.js';
 import type {
   EventCatalog,
+  OrganizerEventsQuery,
   PublishedEventsQuery,
 } from '../../../../application/ports/event-catalog.js';
 import { EventStatus } from '../../../../domain/value-objects/event-status.js';
@@ -32,7 +33,6 @@ export class TypeOrmEventCatalog implements EventCatalog {
   async searchPublished(
     query: PublishedEventsQuery,
   ): Promise<Page<EventSummaryView>> {
-    // Removidos (deleted_at) ficam de fora automaticamente pelo @DeleteDateColumn.
     const builder = this.events
       .createQueryBuilder('event')
       .where('event.status = :status', { status: EventStatus.PUBLISHED })
@@ -56,6 +56,29 @@ export class TypeOrmEventCatalog implements EventCatalog {
 
     const [rows, totalItems] = await builder
       .orderBy('event.eventDate', 'ASC')
+      .addOrderBy('event.id', 'ASC')
+      .offset(offsetOf(query))
+      .limit(query.limit)
+      .getManyAndCount();
+
+    return toPage(rows.map(toSummaryView), totalItems, query);
+  }
+
+  async searchByOrganizer(
+    query: OrganizerEventsQuery,
+  ): Promise<Page<EventSummaryView>> {
+    const builder = this.events
+      .createQueryBuilder('event')
+      .where('event.organizerId = :organizerId', {
+        organizerId: query.organizerId,
+      });
+
+    if (query.status) {
+      builder.andWhere('event.status = :status', { status: query.status });
+    }
+
+    const [rows, totalItems] = await builder
+      .orderBy('event.createdAt', 'DESC')
       .addOrderBy('event.id', 'ASC')
       .offset(offsetOf(query))
       .limit(query.limit)
@@ -92,6 +115,6 @@ const toSummaryView = (row: EventOrmEntity): EventSummaryView => ({
   status: row.status,
 });
 
-// O termo do usuário é literal: % e _ não podem virar curingas do LIKE.
+// % e _ digitados pelo usuário são literais, não curingas.
 const escapeLike = (value: string): string =>
   value.replace(/[\\%_]/g, (char) => `\\${char}`);

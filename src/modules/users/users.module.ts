@@ -20,7 +20,7 @@ import { UsersController } from './presentation/http/controllers/users.controlle
     VerifyCredentialsUseCase,
     GetUserProfileUseCase,
   ],
-  // API pública do módulo: casos de uso, nunca o repositório.
+  // Exporta casos de uso, nunca o repositório.
   exports: [CreateUserUseCase, VerifyCredentialsUseCase, GetUserProfileUseCase],
 })
 export class UsersModule {}

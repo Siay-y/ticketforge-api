@@ -16,7 +16,6 @@ export class SessionTokenIssuer {
     private readonly sessions: SessionStore,
   ) {}
 
-  /** Abre uma sessão nova, usada no login e no cadastro. */
   async startSession(owner: SessionOwner): Promise<AuthTokens> {
     const session: Session = {
       sessionId: crypto.randomUUID(),
@@ -29,7 +28,6 @@ export class SessionTokenIssuer {
     return this.issue(session, owner.role);
   }
 
-  /** Assina o par de tokens de uma sessão já registrada no store. */
   async issue(session: Session, role: UserRole): Promise<AuthTokens> {
     const [accessToken, refreshToken] = await Promise.all([
       this.tokens.signAccessToken({

@@ -7,7 +7,7 @@ import { EventCatalog } from '../ports/event-catalog.js';
 export class GetPublishedEventUseCase {
   constructor(private readonly catalog: EventCatalog) {}
 
-  /** Rascunho, cancelado ou removido responde como inexistente para o público. */
+  /** Evento não publicado responde como inexistente. */
   async execute(slug: string): Promise<EventDetailsView> {
     const event = await this.catalog.findPublishedBySlug(slug);
 

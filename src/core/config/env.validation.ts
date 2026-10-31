@@ -11,7 +11,7 @@ export function parseEnv<S extends z.ZodType>(
     return result.data;
   }
 
-  // Lista apenas nomes e motivos, nunca os valores, para não vazar segredos no log.
+  // Nunca inclui o valor recebido: pode ser segredo.
   const problems = result.error.issues.map((issue) => {
     const variable = String(issue.path[0]);
     const reason =

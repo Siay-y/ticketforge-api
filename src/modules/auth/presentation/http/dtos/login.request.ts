@@ -8,7 +8,7 @@ export class LoginRequest {
   @MaxLength(254)
   email: string;
 
-  // Sem regra de força no login: só o teto, para não revelar a política nem permitir DoS.
+  // Só o teto: o login não revela a política de senha.
   @ApiProperty({
     example: 'Ingresso#2026Seguro',
     maxLength: PASSWORD_MAX_LENGTH,

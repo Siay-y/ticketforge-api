@@ -9,7 +9,6 @@ import {
 export class DeleteEventUseCase {
   constructor(private readonly events: EventRepository) {}
 
-  /** Remoção lógica: o registro fica no banco com `deleted_at` preenchido. */
   execute(actor: Actor, eventId: string): Promise<void> {
     return this.events.update(eventId, (event) => {
       assertCanManage(event, actor);

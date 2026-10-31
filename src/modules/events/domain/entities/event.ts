@@ -59,13 +59,12 @@ export interface CreateEventInput extends EventDetailsInput {
 
 export type EventDetailsChanges = Partial<EventDetailsInput>;
 
-/** Raiz do agregado: toda alteração em lote passa por aqui para manter as invariantes. */
+/** Raiz do agregado: lotes só mudam por aqui. */
 export class Event {
   private constructor(private props: EventProps) {
     Event.validateDetails(props);
   }
 
-  /** Cria em rascunho. Lotes iniciais entram um a um, sob a mesma regra de capacidade. */
   static create(input: CreateEventInput, now: Date): Event {
     assertFuture(input.eventDate, now);
 
@@ -149,7 +148,6 @@ export class Event {
     return this.props.deletedAt;
   }
 
-  /** Ingressos já distribuídos em lotes. */
   get allocatedQuantity(): number {
     return this.props.batches.reduce(
       (sum, batch) => sum + batch.totalQuantity,
@@ -256,7 +254,6 @@ export class Event {
     this.changeStatus(EventStatus.CANCELLED, now);
   }
 
-  /** Remoção lógica. Evento publicado precisa ser cancelado antes. */
   remove(now: Date): void {
     if (!REMOVABLE_STATUSES.has(this.props.status)) {
       throw new InvalidEventStatusTransitionError(
@@ -271,7 +268,7 @@ export class Event {
     this.props = { ...this.props, status, updatedAt: now };
   }
 
-  private assertEditable(): void {
+  assertEditable(): void {
     if (!EDITABLE_STATUSES.has(this.props.status)) {
       throw new EventNotEditableError(this.props.status);
     }

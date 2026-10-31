@@ -113,7 +113,8 @@ Duas requisições simultâneas adicionando lotes ao mesmo evento poderiam, cada
 uma, ler a soma antiga, passar na checagem e juntas estourar a capacidade. Por
 isso toda alteração usa `EventRepository.update(id, change)`:
 
-1. Abre transação e lê o evento e os lotes com `SELECT ... FOR UPDATE`.
+1. Abre transação e lê o evento e os lotes com `SELECT ... FOR UPDATE`, os
+   lotes em ordem de id (a mesma ordem da venda, para nunca haver deadlock).
 2. Aplica `change` no domínio (regras e ownership).
 3. Grava só o que mudou: lotes novos com `INSERT`, alterados com `UPDATE`.
 4. Commit. Qualquer erro no caminho desfaz tudo.
@@ -123,9 +124,10 @@ teste e2e dispara três lotes de 60 em paralelo num evento de capacidade 100 e
 confere que exatamente um entra.
 
 O lock é aceitável aqui porque gestão de evento é operação rara, feita pelo
-organizador. A venda, que é o caminho quente, não vai travar o evento: vai
-decrementar `available_quantity` do lote com uma escrita atômica condicionada ao
-estoque, e a `version` de cada lote permite detectar escrita concorrente.
+organizador. A venda, que é o caminho quente, não trava o evento: trava só os
+lotes comprados (`TicketStockRepository`) e lê o status do evento depois disso.
+Como alterar o evento também trava os lotes, uma venda nunca acontece no meio de
+um cancelamento. Detalhes em [Pedidos](pedidos.md#reserva-post-apiv1orders).
 
 ### Leitura: CQRS leve
 
@@ -191,6 +193,13 @@ cancelado ou removido responde `404`, como se não existisse.
 | `DELETE /api/v1/events/:id` | Dono ou `admin` | `204` soft delete |
 | `POST /api/v1/events/:id/batches` | Dono ou `admin` | `201` lote criado |
 | `PATCH /api/v1/events/:id/batches/:batchId` | Dono ou `admin` | `200` |
+| `GET /api/v1/events/me` | `organizer`, `admin` | `200` página com os próprios eventos, em qualquer status |
+| `POST /api/v1/events/:eventId/coupons` | Dono ou `admin` | `201` cupom criado |
+| `GET /api/v1/events/:eventId/coupons` | Dono ou `admin` | `200` cupons com contagem de uso |
+
+`GET /events/me` aceita `page`, `limit` e `status` (`draft`, `published`,
+`cancelled`, `finished`), ordena dos mais recentes para os mais antigos e deixa
+de fora os removidos. Cupons estão em [Pedidos](pedidos.md#cupons-gestão).
 
 ## Códigos de erro
 

@@ -31,11 +31,15 @@ ticket-forge/
     │   ├── domain/
     │   │   └── errors/            # DomainError: base de todo erro de negócio
     │   ├── application/
-    │   │   └── pagination.ts      # PageRequest, Page<T>
-    │   ├── infrastructure/        # (futuro) outbox
+    │   │   ├── pagination.ts      # PageRequest, Page<T>
+    │   │   └── unit-of-work.ts    # UnitOfWork: transação que atravessa módulos
+    │   ├── infrastructure/
+    │   │   └── persistence/typeorm/
+    │   │       ├── typeorm-unit-of-work.ts  # QueryRunner + AsyncLocalStorage, TransactionContext
+    │   │       └── postgres-errors.ts       # isUniqueViolation()
     │   └── presentation/
     │       └── http/
-    │           ├── decorators/    # @Public()
+    │           ├── decorators/    # @Public(), @IdempotencyKey()
     │           ├── filters/       # DomainError -> status HTTP
     │           ├── validators/    # @IsAfterProperty(), @IsFutureDate()
     │           ├── pagination.ts  # PaginationQuery, PaginationMetaResponse
@@ -62,26 +66,48 @@ ticket-forge/
         │   ├── testing/           # dublês para testes, fora do build
         │   └── users.module.ts
         │
-        ├── events/                # eventos e lotes de ingressos
+        ├── events/                # eventos, lotes, estoque e cupons
         │   ├── domain/
-        │   │   ├── entities/      # Event (raiz do agregado), TicketBatch
-        │   │   ├── value-objects/ # Slug, EventStatus
+        │   │   ├── entities/      # Event (raiz do agregado), TicketBatch, Coupon
+        │   │   ├── value-objects/ # Slug, EventStatus, DiscountType
         │   │   ├── errors/
-        │   │   └── repositories/  # EventRepository (escrita do agregado)
+        │   │   └── repositories/  # EventRepository, TicketStockRepository, CouponRepository
         │   ├── application/
         │   │   ├── ports/         # EventCatalog (leitura)
         │   │   ├── policies/      # ownership: quem gerencia qual evento
-        │   │   ├── dtos/          # EventDetailsView, EventSummaryView, TicketBatchView
+        │   │   ├── services/      # TicketInventoryService (API pública para vendas)
+        │   │   ├── dtos/          # views de evento, lote e cupom
         │   │   ├── errors/
-        │   │   └── use-cases/     # Create, Update, Publish, Cancel, Delete, Add/UpdateBatch, List, Get
+        │   │   └── use-cases/     # gestão de eventos e lotes, ListMyEvents, Create/ListCoupons
         │   ├── infrastructure/persistence/typeorm/
-        │   │   ├── entities/      # EventOrmEntity, TicketBatchOrmEntity
-        │   │   ├── mappers/       # EventMapper
-        │   │   ├── repositories/  # TypeOrmEventRepository (transação + lock)
+        │   │   ├── entities/      # EventOrmEntity, TicketBatchOrmEntity, CouponOrmEntity
+        │   │   ├── mappers/       # EventMapper, TicketBatchMapper
+        │   │   ├── repositories/  # evento (transação + lock), estoque e cupons
         │   │   └── queries/       # TypeOrmEventCatalog
-        │   ├── presentation/http/ # EventsController, DTOs e @ApiManageEvent()
+        │   ├── presentation/http/ # EventsController, EventCouponsController, DTOs
         │   ├── testing/
         │   └── events.module.ts
+        │
+        ├── orders/                # reserva, checkout e cancelamento
+        │   ├── domain/
+        │   │   ├── entities/      # Order, OrderItem
+        │   │   ├── value-objects/ # OrderStatus
+        │   │   ├── errors/
+        │   │   └── repositories/  # OrderRepository
+        │   ├── application/
+        │   │   ├── ports/         # OrderQueries (leitura)
+        │   │   ├── policies/      # quem compra, consulta, paga e cancela
+        │   │   ├── dtos/          # OrderView
+        │   │   ├── errors/
+        │   │   └── use-cases/     # PlaceOrder, PayOrder, CancelOrder, GetOrder, ListMyOrders
+        │   ├── infrastructure/persistence/typeorm/
+        │   │   ├── entities/      # OrderOrmEntity, OrderItemOrmEntity
+        │   │   ├── mappers/
+        │   │   ├── repositories/  # TypeOrmOrderRepository (lock consultivo + FOR UPDATE)
+        │   │   └── queries/       # TypeOrmOrderQueries
+        │   ├── presentation/http/ # OrdersController e DTOs
+        │   ├── testing/
+        │   └── orders.module.ts
         │
         └── auth/                  # sessão, tokens e controle de acesso
             ├── application/
@@ -178,7 +204,7 @@ que pode atravessar a fronteira:
 
 | De | Para | O quê | Exemplo |
 | --- | --- | --- | --- |
-| `application` | `application` de outro módulo | Casos de uso exportados pelo `*.module.ts` | `LoginUseCase` chama `VerifyCredentialsUseCase` |
+| `application` | `application` de outro módulo | Casos de uso e serviços exportados pelo `*.module.ts` | `LoginUseCase` chama `VerifyCredentialsUseCase`; `PlaceOrderUseCase` chama `TicketInventoryService` |
 | Qualquer camada | `domain` de outro módulo | Value objects e enums de linguagem compartilhada | `UserRole` no token e no `@Roles()` |
 | `presentation` | `auth/presentation` | Decorators de controle de acesso | `@Roles()` e `@CurrentUser()` em `UsersController` e `EventsController` |
 | `infrastructure` | Tabela de outro módulo | Somente chave estrangeira, declarada pelo nome da entidade | `@ManyToOne('UserOrmEntity')` em `EventOrmEntity` |
@@ -191,6 +217,40 @@ além do enum `UserRole`. A FK para `users` existe no banco, mas é declarada pe
 nome da entidade (`'UserOrmEntity'`), sem import da infraestrutura do outro
 módulo.
 
+Grafo de dependência entre módulos Nest, sempre de mão única:
+
+```text
+AuthModule ──> UsersModule
+OrdersModule ──> EventsModule
+```
+
+`orders` não lê nem grava as tabelas de lotes e cupons: pede ao
+`TicketInventoryService` de `events` que reserve ou devolva estoque.
+
+## Transações que atravessam módulos
+
+A reserva de um pedido precisa baixar o estoque (tabelas de `events`) e gravar o
+pedido (tabelas de `orders`) atomicamente. O `UnitOfWork` resolve isso sem
+quebrar a fronteira:
+
+```ts
+// orders/application: o caso de uso delimita a transação
+await this.unitOfWork.run(async () => {
+  const reservation = await this.inventory.reserve(...); // escreve em ticket_batches e coupons
+  await this.orders.create(order);                        // escreve em orders e order_items
+});
+```
+
+| Peça | Camada | Papel |
+| --- | --- | --- |
+| `UnitOfWork` | `shared/application` | Porta: `run(work)` executa `work` numa transação |
+| `TypeOrmUnitOfWork` | `shared/infrastructure` | Abre um `QueryRunner`, guarda o `EntityManager` num `AsyncLocalStorage` e faz commit ou rollback |
+| `TransactionContext` | `shared/infrastructure` | Entrega aos repositórios o manager da transação em curso; `transactionalManager` exige transação ativa |
+
+Cada repositório continua escrevendo só nas próprias tabelas; todos usam o
+manager da mesma transação. `run` aninhado reaproveita a transação externa, então
+o `TicketInventoryService` funciona tanto sozinho quanto dentro do pedido.
+
 ## Escrita e leitura separadas
 
 Quando a leitura tem forma diferente da escrita, o módulo usa duas portas (CQRS
@@ -200,6 +260,7 @@ leve, no mesmo banco):
 | --- | --- | --- |
 | `EventRepository` | `domain` | Carrega e grava o agregado inteiro, com as regras e sob lock |
 | `EventCatalog` | `application` | Devolve read models paginados para o catálogo público, sem carregar o agregado |
+| `OrderRepository` / `OrderQueries` | `domain` / `application` | O mesmo padrão para pedidos |
 
 O repositório de escrita expõe `update(id, change)`: carrega com
 `SELECT ... FOR UPDATE`, aplica a função no domínio e grava na mesma transação.
@@ -231,3 +292,6 @@ guards são globais (`APP_GUARD`), então `users` usa `@Roles()` sem importar o
 | Rotas | Versionadas por URI (`/api/v1/...`); health é neutro de versão |
 | Acesso | Toda rota é protegida; abrir exige `@Public()` explícito |
 | Ownership | Checado no caso de uso (`policies/`), não só no controller |
+| Ordem de locks | Evento ou pedido → lotes (por id) → cupom, em toda operação |
+| Rotas fixas e com parâmetro | `me` declarada antes de `:id`/`:slug` no controller |
+| Filtros opcionais no TypeORM | Montados só quando informados: o TypeORM 1.x recusa `undefined` no `where` |

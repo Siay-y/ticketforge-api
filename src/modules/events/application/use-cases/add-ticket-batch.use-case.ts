@@ -14,7 +14,6 @@ import {
 export class AddTicketBatchUseCase {
   constructor(private readonly events: EventRepository) {}
 
-  /** O lock do evento serializa inclusões simultâneas: a soma de capacidade nunca é lida desatualizada. */
   execute(
     actor: Actor,
     eventId: string,

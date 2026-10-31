@@ -12,7 +12,7 @@ const secret = z.string().min(32, 'Use no mínimo 32 caracteres');
 
 const SECONDS_PER_UNIT = { s: 1, m: 60, h: 3_600, d: 86_400 } as const;
 
-// Convertida para segundos: o mesmo número vira o `exp` do JWT e o TTL no Redis.
+// Em segundos: vira o `exp` do JWT e o TTL da sessão.
 const durationInSeconds = z
   .string()
   .regex(/^[1-9]\d*[smhd]$/, 'Use o formato <número><s|m|h|d>, ex.: 15m')
@@ -25,7 +25,6 @@ const durationInSeconds = z
 const isOrigin = (value: string): boolean =>
   URL.canParse(value) && new URL(value).origin === value;
 
-// Lista separada por vírgula. Curinga, caminho e barra final são rejeitados.
 const originList = z
   .string()
   .transform((value) =>

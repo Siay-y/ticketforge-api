@@ -22,8 +22,7 @@ export class RefreshTokenUseCase {
     const claims = await this.tokens.verifyRefreshToken(refreshToken);
     const nextTokenId = crypto.randomUUID();
 
-    // A troca acontece antes de qualquer outra etapa: o token apresentado é
-    // consumido mesmo que algo falhe depois, e só uma requisição concorrente vence.
+    // Troca antes de tudo: o token é consumido mesmo se algo falhar depois.
     const result = await this.sessions.rotate(
       {
         sessionId: claims.sessionId,
@@ -48,7 +47,7 @@ export class RefreshTokenUseCase {
       throw new InvalidTokenError();
     }
 
-    // O papel vem do banco, não do token antigo: mudanças de papel valem na próxima rotação.
+    // Papel relido do banco: mudanças valem na próxima rotação.
     return this.issuer.issue(
       { sessionId: claims.sessionId, userId: user.id, tokenId: nextTokenId },
       user.role,

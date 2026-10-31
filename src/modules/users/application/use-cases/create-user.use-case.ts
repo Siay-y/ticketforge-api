@@ -21,7 +21,7 @@ export class CreateUserUseCase {
   async execute(input: CreateUserInput): Promise<UserView> {
     const email = Email.create(input.email);
 
-    // Atalho para não gastar um hash em duplicata óbvia. A garantia real é o índice único.
+    // Atalho; a garantia real é o índice único.
     if (await this.users.findByEmail(email)) {
       throw new EmailAlreadyInUseError();
     }
