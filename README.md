@@ -1,4 +1,27 @@
-# TicketForge | Luiz Santos
+<p align="center">
+  <a href="https://nestjs.com/"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="NestJS" /></a>
+</p>
+
+<h1 align="center">TicketForge | Luiz Santos</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/NestJS-12.2-E0234E?style=for-the-badge&logo=nestjs&logoColor=white" alt="NestJS 12.2" />
+  <img src="https://img.shields.io/badge/Node.js-24.18-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js 24.18" />
+  <img src="https://img.shields.io/badge/TypeScript-6.0-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript 6.0" />
+  <br />
+  <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL 18" />
+  <img src="https://img.shields.io/badge/TypeORM-1.1-FE0803?style=for-the-badge&logo=typeorm&logoColor=white" alt="TypeORM 1.1" />
+  <img src="https://img.shields.io/badge/Redis-8-FF4438?style=for-the-badge&logo=redis&logoColor=white" alt="Redis 8" />
+  <br />
+  <img src="https://img.shields.io/badge/JWT-12.0-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white" alt="JWT 12.0" />
+  <img src="https://img.shields.io/badge/Zod-4.6-408AFF?style=for-the-badge&logo=zod&logoColor=white" alt="Zod 4.6" />
+  <img src="https://img.shields.io/badge/Swagger-12.0-85EA2D?style=for-the-badge&logo=swagger&logoColor=white" alt="Swagger 12.0" />
+  <br />
+  <img src="https://img.shields.io/badge/Vitest-4.1-00FF74?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest 4.1" />
+  <img src="https://img.shields.io/badge/Oxlint-1.89-00F7F1?style=for-the-badge&logo=oxc&logoColor=white" alt="Oxlint 1.89" />
+  <img src="https://img.shields.io/badge/Prettier-3.9-F7B93E?style=for-the-badge&logo=prettier&logoColor=white" alt="Prettier 3.9" />
+  <img src="https://img.shields.io/badge/Docker_Compose-v2-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose v2" />
+</p>
 
 API de bilhetagem e venda de ingressos em lote, construída em NestJS 12 para
 cenários de alta concorrência: milhares de pessoas disputando o mesmo lote no
@@ -40,19 +63,6 @@ camada e Clean Architecture, com o domínio isolado de framework e banco.
   que invalida o access token na hora.
 - **Cada um no seu lugar.** Organizador só gerencia os próprios eventos, cliente
   só vê os próprios pedidos, e toda rota nasce protegida.
-
----
-
-## Stack
-
-| Camada | Tecnologia |
-| --- | --- |
-| Runtime e framework | Node.js 24, NestJS 12, TypeScript 6 (`strict`, ESM) |
-| Dados | PostgreSQL 18 com TypeORM 1.x; Redis 8 com ioredis |
-| Segurança | `@nestjs/jwt`, `scrypt` nativo, Helmet, `class-validator`, Zod |
-| Documentação | `@nestjs/swagger` |
-| Testes e qualidade | Vitest, Supertest, Oxlint e Prettier |
-| Infraestrutura local | Docker Compose |
 
 ---
 
